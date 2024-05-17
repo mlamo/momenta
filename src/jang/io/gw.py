@@ -71,7 +71,7 @@ class GW:
             if len(missing_variables) > 0:
                 logging.getLogger(self.logger).error("[GW] Cannot prepare toys using only FITS files as following variables are missing", missing_variables)
             return self.fits.prepare_toys(nside, region_restriction)
-        logging.getLogger(self.logger).warning("[GW] No toys are generator as this GW event has no FITS file nor posterior samples.")
+        logging.getLogger(self.logger).warning("[GW] No toys are generated as this GW event has no FITS file nor posterior samples.")
         return None
 
 
