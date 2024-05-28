@@ -6,7 +6,6 @@ from typing import Dict, Tuple
 
 from jang.io import NuDetectorBase, GW, Parameters
 from jang.io.neutrinos import BackgroundFixed, BackgroundGaussian
-import jang.utils.conversions
 
 
 def upperlimit_from_sample(sample: np.ndarray, CL: float = 0.90):
@@ -25,10 +24,10 @@ def prepare_model(detector: NuDetectorBase, gw: GW, parameters: Parameters) -> p
         "pix": np.arange(npix),
         "nusample": [s.name for s in detector.samples]
     }
+    aeffs = [s.effective_area for s in detector.samples]
     
     with pm.Model(coords=coords) as model:
         gw = pm.Data("gw", toysgw, dims=("gw_toys", "gw_pars"))
-        acc_map = pm.Data('acceptance_map', [s.acceptances[parameters.spectrum].map for s in detector.samples], dims=("sample", "pix")) 
         bkg = []
         for s in detector.samples:
             if not parameters.apply_det_systematics or isinstance(s.background, BackgroundFixed):
@@ -36,17 +35,14 @@ def prepare_model(detector: NuDetectorBase, gw: GW, parameters: Parameters) -> p
             elif isinstance(s.background, BackgroundGaussian):
                 bkg.append(pm.TruncatedNormal(f"bkg_{s.name}", mu=s.background.b0, sigma=s.background.error_b, lower=0))
         if not parameters.apply_det_systematics:
-            xacc = 1
+            xacc = pm.Data("xacc", 1)
         else:
             xacc = pm.MvNormal("xacc", mu=np.ones(detector.nsamples), cov=detector.error_acceptance, dims="nusample")
         itoygw = pm.Categorical("itoygw", p=np.ones(len(toysgw))/len(toysgw))
-        phi = pm.Uniform("phi", lower=0, upper=1e9)
         ipix = pm.Deterministic("ipix", gw[itoygw][0]).astype("int64")
-        eiso = pm.Deterministic("eiso", phi / jang.utils.conversions.eiso_to_phi(parameters.range_energy_integration, parameters.spectrum, gw[itoygw][1]))
-        etot = pm.Deterministic("etot", eiso / jang.utils.conversions.etot_to_eiso(gw[itoygw][3], parameters.jet))
-        fnu = pm.Deterministic("fnu", etot / jang.utils.conversions.fnu_to_etot(gw[itoygw][2]))
-        sig = pm.Deterministic("sig", phi / 6 * xacc * acc_map[:,ipix], dims="sample")
-        obs = pm.Poisson("nobs", mu=bkg+sig, observed=[s.nobserved for s in detector.samples], dims="sample")
+        parameters.fspectrum.define_signal_parameters(gw, itoygw, parameters)
+        sig = parameters.fspectrum.define_expected_signal(ipix, xacc, aeffs)
+        obs = pm.Poisson("nobs", mu=bkg+sig, observed=[s.nobserved for s in detector.samples], dims="nusample")
 
     return model
 

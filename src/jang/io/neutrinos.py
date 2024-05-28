@@ -217,6 +217,7 @@ class NuSample:
 
     def __init__(self, name: str = None, shortname: str = None):
         self.acceptances = {}
+        self.effective_area = None
         self.name = name
         self.shortname = shortname if shortname is not None else name
         self.energy_range = (None, None)
@@ -326,6 +327,10 @@ class NuDetectorBase(abc.ABC):
         if not np.all(np.isin(nsides, [0, max(nsides)])):
             raise RuntimeError("All acceptance maps are not in the same resolution. Exiting!")
         return accs, max(nsides)
+    
+    def get_acceptances_test(self, spectrum: str, nside: int):
+        print(spectrum, nside)
+        return np.array([[s.effective_area.get_acceptance(ipix, spectrum) for ipix in range(hp.nside2npix(nside))] for s in self.samples])
 
     def get_nonempty_acceptance_pixels(self, spectrum: str, nside: int):
         accs, _ = self.get_acceptances(spectrum)

@@ -2,12 +2,15 @@ import healpy as hp
 import matplotlib.pyplot as plt
 import numpy as np
 import tempfile
+from collections import defaultdict
+from scipy.integrate import quad
 
 from jang.io import GW, NuDetector, Parameters
-from jang.io.neutrinos import BackgroundGaussian
+from jang.io.neutrinos import BackgroundGaussian, EffectiveAreaBase
 import jang.utils.conversions
 import jang.analysis.limits as limits
 import jang.analysis.mcmc as mcmc
+import jang.utils.flux as flux
 
 
 tmpdir = tempfile.mkdtemp()
@@ -25,7 +28,7 @@ range:
   log10_flux: [-5, 5, 1000]
   log10_etot: [48, 62, 1400]
   log10_fnu: [-5, 10, 1500]
-  neutrino_energy_GeV: [0.1, 1e8]
+  neutrino_energy_GeV: [1, 1e6]
 """
 config_file = f"{tmpdir}/config.yaml"
 with open(config_file, "w") as f:
@@ -38,7 +41,7 @@ nsamples: 1
 samples:
   names: ["sampleA"]
   shortnames: ["A"]
-  energyrange: [0, 100]
+  energyrange: [1, 1e6]
 
 earth_location:
   latitude: 10.0
@@ -65,15 +68,37 @@ gw.set_parameters(parameters)
 
 det = NuDetector(det_file)
 
-acc = 6 * np.ones(hp.nside2npix(parameters.nside))
+class EffAreaTest(EffectiveAreaBase):
+    acceptance = defaultdict(dict)
+    nside = 8
+    
+    def evaluate(self, energy):
+        return energy**2 * np.exp(-energy/10000)
+    
+    def integrate(self, spectrum):
+        f_spectrum = eval("lambda x: %s" % spectrum)
+        def func(x: float, *args):
+            return self.evaluate(np.exp(x), *args) * f_spectrum(np.exp(x)) * np.exp(x)
+        return quad(func, *self.sample.log_energy_range, limit=500)[0]
+    
+    def get_acceptance(self, ipix, spectrum):
+        if ipix not in self.acceptance[spectrum]:
+            self.acceptance[spectrum][ipix] = self.integrate(spectrum)
+        return self.acceptance[spectrum][ipix]
+        
+det.samples[0].effective_area = EffAreaTest(det.samples[0])
+det.samples[0].effective_area.nside = parameters.nside
+acc = det.samples[0].effective_area.to_acceptance(det, parameters.nside, 0, parameters.spectrum)
 det.set_acceptances([acc], "x**-2", nside=parameters.nside)
+parameters.fspectrum = flux.FixedPowerLaw(1, 1000000, 2)
 
-x = np.arange(10+1)
+x = np.arange(1)
 limits_old, limits_mcmc = [], []
 
 for X in x:
     det.set_observations([X], [BackgroundGaussian(0.5, 0.1)])
     limits_old.append(limits.get_limit_flux(det, gw, parameters))
+    limits.get_limit_etot(det, gw, parameters)
     limits_mcmc.append(mcmc.get_limits(det, gw, parameters)[0])
     
 plt.close("all")
