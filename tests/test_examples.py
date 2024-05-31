@@ -6,21 +6,21 @@ import healpy as hp
 import numpy as np
 
 import jang.utils.conversions
+import jang.utils.flux
 from jang.io import GWDatabase, NuDetector, Parameters, ResDatabase
 from jang.io.neutrinos import BackgroundFixed, EffectiveAreaBase
 import jang.analysis.limits as limits
-import jang.analysis.limits_differential as limits_differential
 import jang.analysis.significance as significance
 import jang.analysis.stacking as stacking
 
 
 class EffectiveArea(EffectiveAreaBase):
-    def __init__(self, value):
-        super().__init__(None)
-        self.value = value
+    def __init__(self, norm):
+        super().__init__()
+        self.norm = norm
 
     def evaluate(self, energy):
-        return self.value * np.ones_like(energy)
+        return self.norm
 
 
 class TestExamples(unittest.TestCase):
@@ -74,18 +74,16 @@ class TestExamples(unittest.TestCase):
 
         # configuration
         self.pars = Parameters(self.config_file)
-        self.pars.set_models("x**-2", jang.utils.conversions.JetIsotropic())
+        self.pars.set_models(jang.utils.flux.FluxFixedPowerLaw(1, 100, 2), jang.utils.conversions.JetIsotropic())
         # GW database
         database_gw = GWDatabase(self.gwdb_file)
         database_gw.set_parameters(self.pars)
         self.gw = database_gw.find_gw("GW190412")
         # detector
         self.det = NuDetector(self.det_file)
-        self.det.set_acceptances(self.accs, self.pars.spectrum, self.pars.nside)
         bkg = [BackgroundFixed(b) for b in [0.1, 0.3]]
+        self.det.set_effective_areas([EffectiveArea(2), EffectiveArea(1)])
         self.det.set_observations([0, 0], bkg)
-        # effective areas
-        self.aeffs = [EffectiveArea(1), EffectiveArea(0)]
 
     def test_limits_nosyst(self):
         self.pars.apply_det_systematics = False
@@ -110,14 +108,6 @@ class TestExamples(unittest.TestCase):
         limits.get_limit_flux(self.det, self.gw, self.pars, f"{self.tmpdir}/flux")
         limits.get_limit_etot(self.det, self.gw, self.pars, f"{self.tmpdir}/etot")
         limits.get_limit_fnu(self.det, self.gw, self.pars, f"{self.tmpdir}/fnu")
-
-    def test_difflimits(self):
-        self.pars.apply_det_systematics = False
-        self.pars.likelihood_method = "poisson"
-        energy_bins = [(10.**x, 10.**(x+1)) for x in np.arange(-1, 9)]
-        sample_styles = {'sampleA': {'color': 'blue'}, 'sampleB': {'color': 'red'}}
-        diff_limits = limits_differential.get_flux_limits(self.det, self.aeffs, self.gw, self.pars, energy_bins)
-        limits_differential.plot_flux_limits(f"{self.tmpdir}/diff.png", diff_limits, sample_styles)
 
     def test_results_db(self):
         # make fake lkl files for etot and fnu (needed for stacking)
@@ -156,7 +146,7 @@ class TestExamples(unittest.TestCase):
         database_res = ResDatabase(self.db_file)
         with self.assertLogs(level="INFO"):
             database_res = database_res.select()
-        database_res = database_res.select(self.det, self.pars.spectrum, self.pars.jet)
+        database_res = database_res.select(det=self.det, jetmodel=self.pars.jet)
         # make plots
         cat = {
             "column": "GW.type",

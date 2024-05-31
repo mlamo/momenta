@@ -4,7 +4,9 @@ import abc
 import itertools
 import logging
 import os
+import pymc as pm
 import warnings
+from collections import defaultdict
 from collections.abc import Iterable
 from typing import List, Optional, Tuple, Union
 
@@ -16,7 +18,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.integrate
 import yaml
-from astropy.units import Quantity, Unit, rad
+from astropy.units import Quantity, Unit, deg
+from scipy.integrate import quad
+from scipy.interpolate import interp1d
 from scipy.linalg import block_diag
 from scipy.stats import gamma, multivariate_normal, truncnorm
 
@@ -49,61 +53,48 @@ def infer_uncertainties(input_array: Union[float, np.ndarray], nsamples: int, co
     raise RuntimeError("The size of uncertainty_acceptance does not match with the number of samples")
 
 
-class Acceptance:
-    """General class to handle detector acceptance for a given sample, spectrum and neutrino flavour.
-    The acceptance is stored as a numpy array representing a HealPix map."""
+class EffectiveAreaBase:
+    """Class to handle detector effective area for a given sample and neutrino flavour.
+    This default class handles only energy-dependent effective area."""
 
-    def __init__(self, rinput: Union[np.ndarray, float, int, str]):
-        if isinstance(rinput, np.ndarray):  # pass the numpy array directly
-            self.map = rinput
-            self.nside = hp.npix2nside(len(self.map))
-        elif isinstance(rinput, float) or isinstance(rinput, int):  # constant value for all sky
-            self.map = rinput
-            self.nside = 0
-        elif isinstance(rinput, str) and rinput.endswith(".npy"):  # input npy file
-            self.from_npy(rinput)
-        else:  # default value = 0
-            logging.getLogger("jang").warning("Acceptance is set to 0!")
-            self.map = 0
-            self.nside = 0
+    def __init__(self):
+        self.acceptances = {}
 
-    def __call__(self, ra: float, dec: float):
-        ipix = hp.ang2pix(self.nside, np.pi / 2 - dec, ra)
-        return self.evaluate(ipix)
+    def evaluate(self, energy: float | np.ndarray):
+        return 0
+    
+    def compute_acceptance(self, fluxcomponent, *args):
+        def func(x: float, *args):
+            return fluxcomponent.evaluate(np.exp(x)) * self.evaluate(np.exp(x), *args) * np.exp(x)
+        return quad(func, np.log(fluxcomponent.emin), np.log(fluxcomponent.emax), limit=500, args=args)[0]
+    
+    def to_acceptance(self, fluxcomponent, nside: int):
+        return self.compute_acceptance(fluxcomponent) * np.ones(hp.nside2npix(nside))
+    
+    def get_acceptance(self, fluxcomponent, nside: int):
+        if str(fluxcomponent) not in self.acceptances:
+            self.acceptances[str(fluxcomponent)] = self.to_acceptance(fluxcomponent, nside)
+        acc = hp.ud_grade(self.acceptances[str(fluxcomponent)], nside)
+        return acc
+        
 
-    def is_zero(self):
-        if self.nside == 0:
-            return True
-        return np.all(self.map == 0)
-
-    def from_npy(self, file: str):  # pragma: no cover
-        assert os.path.isfile(file)
-        self.map = np.load(file, allow_pickle=True)
-        self.nside = hp.npix2nside(len(self.map))
-
-    def change_resolution(self, nside):
-        if self.nside != nside:
-            if self.is_zero():
-                self.map = np.zeros(hp.nside2npix(nside))
-            else:
-                self.map = hp.pixelfunc.ud_grade(self.map, nside)
-                self.nside = nside
-
-    def evaluate(self, ipix: int, nside: Optional[int] = None):
-        if self.is_zero():
-            return 0
-        ipix_acc = ipix
-        if nside is not None and nside != self.nside:
-            ipix_acc = hp.ang2pix(self.nside, *hp.pix2ang(nside, ipix))
-        return self.map[ipix_acc]
-
-    def draw(self, outfile: str, log: bool = False):  # pragma: no cover
-        if self.is_zero():
-            return
-        plt.close("all")
-        hp.mollview(self.map, min=None if log else 0, rot=180, cmap="Blues", title="", unit=r"Acceptance [cm$^{2}$/GeV]", norm="log" if log else None)
-        hp.graticule()
-        plt.savefig(outfile, dpi=300)
+class EffectiveAreaAllSky(EffectiveAreaBase):
+    
+    def __init__(self, csvfile: str):
+        super().__init__()
+        self.func = None
+        self.read_csv(csvfile)
+        
+    def read_csv(self, csvfile: str):
+        x, y = np.loadtxt(csvfile, delimiter=',').T
+        self.func = interp1d(x, y, bounds_error=False, fill_value=0)
+        
+    def evaluate(self, energy: float | np.ndarray):
+        return self.func(energy)
+    
+    def to_acceptance(self, flux, nside: int):
+        acc = self.compute_acceptance(flux)
+        return acc * np.ones(hp.nside2npix(nside))
 
 
 class Background(abc.ABC):
@@ -232,12 +223,8 @@ class NuSample:
     def set_energy_range(self, emin: float, emax: float):
         self.energy_range = (emin, emax)
 
-    def set_acceptance(self, acceptance: Union[np.ndarray, float], spectrum: str, nside: Optional[int] = None):
-        acc = Acceptance(acceptance)
-        if nside is not None:
-            acc.change_resolution(nside)
-        assert isinstance(spectrum, str)
-        self.acceptances[spectrum] = acc
+    def set_effective_area(self, aeff):
+        self.effective_area = aeff
 
     def set_observations(self, nobserved: int, bkg: Background):
         self.nobserved = nobserved
@@ -316,30 +303,14 @@ class NuDetectorBase(abc.ABC):
     @property
     def nsamples(self):
         return len(self._samples)
-
-    def get_acceptances(self, spectrum: str):
-        accs = []
-        for sample in self.samples:
-            if spectrum not in sample.acceptances:
-                raise RuntimeError("Acceptance for spectrum %s is not available in sample %s" % (spectrum, sample.name))
-            accs.append(sample.acceptances[spectrum])
-        nsides = np.array([acc.nside for acc in accs])
-        if not np.all(np.isin(nsides, [0, max(nsides)])):
-            raise RuntimeError("All acceptance maps are not in the same resolution. Exiting!")
-        return accs, max(nsides)
+   
+    def get_acceptances(self, fluxcomponent, nside):
+        return [s.effective_area.get_acceptance(fluxcomponent, nside) for s in self.samples]
     
-    def get_acceptances_test(self, spectrum: str, nside: int):
-        print(spectrum, nside)
-        return np.array([[s.effective_area.get_acceptance(ipix, spectrum) for ipix in range(hp.nside2npix(nside))] for s in self.samples])
-
-    def get_nonempty_acceptance_pixels(self, spectrum: str, nside: int):
-        accs, _ = self.get_acceptances(spectrum)
-        npix = hp.nside2npix(nside)
-        acctot = np.zeros(npix)
-        for acc in accs:
-            for ipix in range(npix):
-                acctot[ipix] += acc.evaluate(ipix, nside)
-        return np.nonzero(acctot)[0]
+    def get_nonempty_acceptance_pixels(self, flux, nside: int):
+        accs = [self.get_acceptances(c, nside) for c in flux.components]
+        accs = np.apply_over_axes(np.sum, np.array(accs), [0, 1])
+        return np.argwhere(accs > 0)
 
     def prepare_toys(self, ntoys: int = 0) -> List[ToyNuDet]:
 
@@ -380,8 +351,6 @@ class NuDetector(NuDetectorBase):
         self.error_acceptance_corr = None
         if infile is not None:
             self.load(infile)
-
-    # setter functions
 
     def load(self, rinput: Union[dict, str]):
         """Load the detector configuration from either
@@ -435,37 +404,10 @@ class NuDetector(NuDetectorBase):
             raise RuntimeError("[NuDetector] Incorrect size for nbackground as compared to the number of samples.")
         for i, smp in enumerate(self.samples):
             smp.set_observations(nobserved[i], background[i])
-
-    def set_acceptances(self, acceptances: list, spectrum: str, nside: Optional[int] = None):
-        if len(acceptances) != self.nsamples:
-            raise RuntimeError("[NuDetector] Incorrect number of acceptance maps as compared to the number of samples.")
-        for acceptance, sample in zip(acceptances, self.samples):
-            sample.set_acceptance(acceptance, spectrum, nside)
-
-    # converters
-
-    def jd_to_lst(self, jd: float) -> float:  # pragma: no cover
-        t = astropy.time.Time(jd, format="jd")
-        return t.sidereal_time("apparent", longitude=self.earth_location)
-
-    def radec_to_altaz(self, ra: Quantity, dec: Quantity, jd: float) -> Tuple[Quantity, Quantity]:
-        c_eq = astropy.coordinates.SkyCoord(ra=ra, dec=dec, frame="icrs")
-        c_loc = c_eq.transform_to(
-            astropy.coordinates.AltAz(obstime=astropy.time.Time(jd, format="jd"), location=self.earth_location)
-        )
-        return c_loc.alt, c_loc.az
-
-    def altaz_to_radec(self, alt: Quantity, az: Quantity, jd: float) -> Tuple[Quantity, Quantity]:
-        altaz = astropy.coordinates.AltAz(
-            alt=alt,
-            az=az,
-            obstime=astropy.time.Time(jd, format="jd"),
-            location=self.earth_location,
-        )
-        radec = altaz.transform_to(astropy.coordinates.ICRS())
-        return radec.ra, radec.dec
-
-    # other
+            
+    def set_effective_areas(self, aeffs: list[EffectiveAreaBase]):
+        for i, smp in enumerate(self.samples):
+            smp.set_effective_area(aeffs[i])
 
     def check_errors_validity(self):
         self.error_acceptance = infer_uncertainties(
@@ -500,51 +442,3 @@ class SuperNuDetector(NuDetectorBase):
         log.info("[SuperDetector] Detector %s is added to the SuperDetector.", det.name)
         self.detectors.append(det)
         self.error_acceptance = block_diag(*[d.error_acceptance for d in self.detectors])
-
-
-class EffectiveAreaBase(abc.ABC):
-    """Class to handle detector effective area for a given sample and neutrino flavour."""
-
-    def __init__(self, sample: NuSample):
-        self.sample = sample
-        self.args_evaluate = []
-
-    @abc.abstractmethod  # pragma: no cover
-    def evaluate(self, energy: Union[float, Iterable]):
-        pass
-
-    def to_acceptance(self, detector: NuDetector, nside: int, jd: float, spectrum: str):
-        if nside is None or nside <= 0:
-            raise RuntimeError("A positive nside should be provided!")
-        npix = hp.nside2npix(nside)
-        acc_map = np.zeros(npix)
-        dec, ra = hp.pix2ang(nside, range(npix))
-        dec, ra = (np.pi / 2 - dec), ra
-
-        f_spectrum = eval("lambda x: %s" % spectrum)
-
-        def func(x: float, *args):
-            return self.evaluate(np.exp(x), *args) * f_spectrum(np.exp(x)) * np.exp(x)
-
-        for ipix in range(npix):
-
-            if "altitude" in self.args_evaluate and "azimuth" in self.args_evaluate:
-                alt, az = detector.radec_to_altaz(ra * rad, dec * rad, jd)
-                arg = (alt[ipix].rad, az[ipix].rad)
-            elif "altitude" in self.args_evaluate:
-                alt, az = detector.radec_to_altaz(ra * rad, dec * rad, jd)
-                arg = (alt[ipix].rad,)
-            elif "ra" in self.args_evaluate and "dec" in self.args_evaluate:
-                arg = (ra[ipix], dec[ipix])
-            elif "dec" in self.args_evaluate:
-                arg = (dec[ipix],)
-            else:
-                arg = ()
-
-            acc_map[ipix], _ = scipy.integrate.quad(
-                func,
-                *(self.sample.log_energy_range),
-                args=arg,
-                limit=500,
-            )
-        return np.array(acc_map)

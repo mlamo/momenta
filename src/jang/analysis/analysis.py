@@ -22,12 +22,7 @@ class Analysis:
 
     @cached_property
     def acceptances(self):
-        acceptances, nside = self._detector.get_acceptances(self._parameters.spectrum)
-        if self._parameters.nside is None:
-            self._parameters.nside = nside  # pragma: no cover
-        elif self._parameters.nside != nside:
-            raise RuntimeError("Something went wrong with map resolutions!")  # pragma: no cover
-        return acceptances
+        return self._detector.get_acceptances(self._parameters.flux.components[0], self._parameters.nside)
 
     def prepare_toys(self, add_gw_vars: list = None, fixed_gwpixel: int = None):
         if add_gw_vars is not None:
@@ -53,21 +48,15 @@ class Analysis:
         return itertools.product(self.toys_gw, self.toys_det)
 
     def phi_to_nsig(self, toy: tuple):
-        phi_to_nsig = [
-            acc.evaluate(toy[0].ipix, nside=self._parameters.nside) for i, acc in enumerate(self.acceptances)
-        ]
+        phi_to_nsig = [acc[toy[0].ipix] for acc in self.acceptances]
         phi_to_nsig = np.array(phi_to_nsig)
         phi_to_nsig *= toy[1].var_acceptance
         phi_to_nsig /= 6
         return phi_to_nsig
 
     def eiso_to_phi(self, toy: tuple):
-        return jang.utils.conversions.eiso_to_phi(
-            self._parameters.range_energy_integration,
-            self._parameters.spectrum,
-            toy[0].luminosity_distance,
-        )
-
+        return 1 / self._parameters.flux.components[0].flux_to_eiso(toy[0].luminosity_distance)
+    
     def etot_to_eiso(self, toy: tuple):
         return jang.utils.conversions.etot_to_eiso(toy[0].theta_jn, self._parameters.jet)
 

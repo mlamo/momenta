@@ -51,8 +51,6 @@ class TestJetModels(unittest.TestCase):
 
 class TestConversions(unittest.TestCase):
     def test_fluxenergy(self):
-        jang.utils.conversions.phi_to_eiso((1, 100), "x**-2", 1)
-        jang.utils.conversions.eiso_to_phi((1, 100), "x**-2", 1)
         jang.utils.conversions.etot_to_eiso(0.3, jang.utils.conversions.JetIsotropic())
         jang.utils.conversions.fnu_to_etot(1)
 

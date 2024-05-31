@@ -30,7 +30,7 @@ def plot_posterior(x: np.ndarray, y: np.ndarray, limit: float, xlabel: str, outf
 
 
 def get_limit_flux(detector: NuDetectorBase, gw: GW, parameters: Parameters, outfile: Optional[str] = None) -> float:
-    """Return 90% upper limit on flux normalization (dn/dE = norm*{parameters.spectrum}).
+    """Return 90% upper limit on flux normalization (dn/dE = norm*{parameters.flux}).
     The related posterior will be saved in "{outfile}.[npy/png]" if provided."""
 
     variables = [jang.stats.PosteriorVariable("flux", *parameters.range_flux, log=True)]
@@ -46,7 +46,7 @@ def get_limit_flux(detector: NuDetectorBase, gw: GW, parameters: Parameters, out
         "[Limits] %s, %s, %s, limit(Flux) = %.3e",
         gw.name,
         detector.name,
-        parameters.spectrum,
+        parameters.flux.components[0],
         limit,
     )
     return limit
@@ -70,7 +70,7 @@ def get_limit_etot(detector: NuDetectorBase, gw: GW, parameters: Parameters, out
         gw.name,
         detector.name,
         parameters.jet.__repr__(),
-        parameters.spectrum,
+        parameters.flux.components[0],
         limit,
     )
     return limit
@@ -94,14 +94,14 @@ def get_limit_fnu(detector: NuDetectorBase, gw: GW, parameters: Parameters, outf
         gw.name,
         detector.name,
         parameters.jet.__repr__(),
-        parameters.spectrum,
+        parameters.flux.components[0],
         limit,
     )
     return limit
 
 
 def get_limitmap_flux(detector: NuDetectorBase, gw: GW, parameters: Parameters, outfile: Optional[str] = None, log: bool = False) -> float:
-    """Return map 90% upper limit on flux normalization (dn/dE = norm*{parameters.spectrum}),
+    """Return map 90% upper limit on flux normalization (dn/dE = norm*{parameters.flux}),
     without marginalizing over the source localization."""
 
     variables = [jang.stats.PosteriorVariable("flux", *parameters.range_flux, log=True)]

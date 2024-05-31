@@ -6,7 +6,6 @@ import unittest
 
 from jang.io.neutrinos import (
     infer_uncertainties,
-    Acceptance,
     BackgroundFixed,
     BackgroundGaussian,
     BackgroundPoisson,
@@ -69,46 +68,12 @@ class TestDetector(unittest.TestCase):
             ],
         )
 
-    def test_acceptance(self):
-        self.d1.set_acceptances([np.zeros(hp.nside2npix(4))], "x**-2", nside=8)
-        self.assertEqual(self.d1.get_acceptances("x**-2")[0][0].evaluate(0), 0)
-        self.assertEqual(self.d1.get_acceptances("x**-2")[0][0].evaluate(0, nside=2), 0)
-        with self.assertRaises(RuntimeError):
-            self.d2.set_acceptances([0], "x**-2")
-        self.d2.set_acceptances([0, 0, 0, 0], "x**-2")
-        self.assertTrue(self.d2.get_acceptances("x**-2")[0][0].is_zero())
-        self.assertEqual(self.d2.get_acceptances("x**-2")[0][0].evaluate(0), 0)
-        with self.assertRaises(RuntimeError):
-            self.d2.get_acceptances("x**-3")
-        self.d2.set_acceptances([np.zeros(hp.nside2npix(8)), 0, 0, np.zeros(hp.nside2npix(4))], "x**-2.5")
-        with self.assertRaises(RuntimeError):
-            self.d2.get_acceptances("x**-2.5")
-        #
-        with self.assertRaises(ValueError):
-            Acceptance(np.ones(13))
-
     def test_members(self):
         self.assertEqual(self.d1.nsamples, 1)
         self.assertEqual(self.d2.nsamples, 4)
         self.assertEqual(self.d1.name, "Test")
         self.assertEqual(len(self.d2.samples), 4)
         self.assertEqual(self.d1.samples[0].shortname, "smp")
-
-    def test_conv(self):
-        ra = np.random.uniform(0, 360, size=10) * deg
-        dec = np.random.uniform(-90, 90, size=10) * deg
-        alt, az = self.d2.radec_to_altaz(ra, dec, 2450000)
-        nra, ndec = self.d2.altaz_to_radec(alt, az, 2450000)
-        for i in range(10):
-            self.assertAlmostEqual(ra[i].to(deg).value, nra[i].to(deg).value)
-            self.assertAlmostEqual(dec[i].to(deg).value, ndec[i].to(deg).value)
-        alt = np.random.uniform(-90, 90, size=10) * deg
-        az = np.random.uniform(0, 360, size=10) * deg
-        ra, dec = self.d2.altaz_to_radec(alt, az, 2455000)
-        nalt, naz = self.d2.radec_to_altaz(ra, dec, 2455000)
-        for i in range(10):
-            self.assertAlmostEqual(alt[i].to(deg).value, nalt[i].to(deg).value)
-            self.assertAlmostEqual(az[i].to(deg).value, naz[i].to(deg).value)
 
     def test_exceptions(self):
         self.dict_det1["samples"]["energyrange"] = 0
@@ -142,41 +107,6 @@ class TestDetector(unittest.TestCase):
         self.assertEqual(len(list(sd.samples)), 5)
         sd.prepare_toys(0)
         sd.prepare_toys(500)
-        #
-        self.d1.set_acceptances([np.zeros(hp.nside2npix(4))], "x**-2")
-        self.d2.set_acceptances(
-            [
-                np.zeros(hp.nside2npix(4)),
-                np.zeros(hp.nside2npix(4)),
-                np.zeros(hp.nside2npix(4)),
-                np.zeros(hp.nside2npix(4)),
-            ],
-            "x**-2",
-        )
-        sd.get_acceptances("x**-2")
-        with self.assertRaises(RuntimeError):
-            sd.get_acceptances("x**-3")
-
-
-class MyEffectiveArea(EffectiveAreaBase):
-    def evaluate(self, energy: Union[float, Iterable]):
-        return np.ones_like(energy)
-
-
-class TestEffectiveArea(unittest.TestCase):
-    def test_convert(self):
-        self.dict_det = {
-            "name": "Test",
-            "nsamples": 1,
-            "samples": {"names": ["smp"], "energyrange": [1, 100]},
-            "earth_location": {"latitude": 0, "longitude": 0, "units": "deg"},
-            "errors": {"acceptance": 0, "acceptance_corr": 0, "background": 0},
-        }
-        det = NuDetector(self.dict_det)
-        aeff = MyEffectiveArea(det.samples[0])
-        aeff.to_acceptance(det, 4, 2450000, "x**-2")
-        with self.assertRaises(RuntimeError):
-            aeff.to_acceptance(det, None, 2450000, "x**-2")
 
 
 class TestOther(unittest.TestCase):

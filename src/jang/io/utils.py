@@ -9,7 +9,7 @@ def get_search_region(detector: NuDetector, gw: GW, pars: Parameters):
 
     region = gw.fits.get_signal_region(pars.nside, pars.get_searchregion_gwfraction())
     if not pars.get_searchregion_iszeroincluded():
-        region_nonzero = detector.get_nonempty_acceptance_pixels(pars.spectrum, pars.nside)
+        region_nonzero = detector.get_nonempty_acceptance_pixels(pars.flux, pars.nside)
         region = np.intersect1d(region, region_nonzero)
     if len(region) == 0:
         raise RuntimeError("The search region has been reduced to empty. Please check 'search_region' parameter.")

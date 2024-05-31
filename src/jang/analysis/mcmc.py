@@ -22,9 +22,9 @@ def prepare_model(detector: NuDetectorBase, gw: GW, parameters: Parameters) -> p
         "gw_toys": np.arange(len(toysgw)),
         "gw_pars": ["ipix", "luminosity_distance", "radiated_energy", "theta_jn"],
         "pix": np.arange(npix),
-        "nusample": [s.name for s in detector.samples]
+        "nusample": [s.name for s in detector.samples],
+        "fluxcomponents": [str(c) for c in parameters.flux.components]
     }
-    aeffs = [s.effective_area for s in detector.samples]
     
     with pm.Model(coords=coords) as model:
         gw = pm.Data("gw", toysgw, dims=("gw_toys", "gw_pars"))
@@ -39,9 +39,9 @@ def prepare_model(detector: NuDetectorBase, gw: GW, parameters: Parameters) -> p
         else:
             xacc = pm.MvNormal("xacc", mu=np.ones(detector.nsamples), cov=detector.error_acceptance, dims="nusample")
         itoygw = pm.Categorical("itoygw", p=np.ones(len(toysgw))/len(toysgw))
-        ipix = pm.Deterministic("ipix", gw[itoygw][0]).astype("int64")
-        parameters.fspectrum.define_signal_parameters(gw, itoygw, parameters)
-        sig = parameters.fspectrum.define_expected_signal(ipix, xacc, aeffs)
+        parameters.flux.define_signal_parameters(gw, itoygw, parameters)
+        parameters.flux.define_auxiliary(gw, itoygw, parameters)
+        sig = parameters.flux.define_expected_signal(gw, itoygw, xacc, detector, parameters.nside)
         obs = pm.Poisson("nobs", mu=bkg+sig, observed=[s.nobserved for s in detector.samples], dims="nusample")
 
     return model
@@ -50,8 +50,11 @@ def prepare_model(detector: NuDetectorBase, gw: GW, parameters: Parameters) -> p
 def get_samples(model: pm.model.core.Model) -> Dict[str, np.ndarray]:
 
     with model:
-        idata = pm.sample(draws=20000, chains=4)
-    return {v: idata.posterior[v].values.flatten() for v in ("phi", "eiso", "etot", "fnu")}
+        idata = pm.sample(draws=5000, chains=4)
+    samples = {v: idata.posterior[v].values.flatten() for v in ("eiso", "etot", "fnu")}
+    for i in range(idata.posterior["phi"].shape[2]):
+        samples[f"phi{i}"] = idata.posterior["phi"].values[:,:,i].flatten()
+    return samples
     
     
 def get_limits(detector: NuDetectorBase, gw: GW, parameters: Parameters) -> Tuple[float]:
@@ -59,13 +62,15 @@ def get_limits(detector: NuDetectorBase, gw: GW, parameters: Parameters) -> Tupl
     model = prepare_model(detector, gw, parameters)
     samples = get_samples(model)
     
-    limit_phi = upperlimit_from_sample(samples["phi"], 0.90)
-    logging.getLogger("jang").info("[Limits(MCMC)] %s, %s, %s, limit(Flux) = %.3e", gw.name, detector.name, parameters.spectrum, limit_phi)
+    limit_phi = []
+    for i in range(parameters.flux.ncomponents):
+        limit_phi.append(upperlimit_from_sample(samples[f"phi{i}"], 0.90))
+        logging.getLogger("jang").info("[Limits(MCMC)] %s, %s, %s, limit(Flux%d) = %.3e", gw.name, detector.name, parameters.flux, i, limit_phi[-1])
     limit_eiso = upperlimit_from_sample(samples["eiso"], 0.90)
-    logging.getLogger("jang").info("[Limits(MCMC)] %s, %s, %s, limit(Eiso) = %.3e", gw.name, detector.name, parameters.spectrum, limit_eiso)
+    logging.getLogger("jang").info("[Limits(MCMC)] %s, %s, %s, limit(Eiso) = %.3e", gw.name, detector.name, parameters.flux, limit_eiso)
     limit_etot = upperlimit_from_sample(samples["etot"], 0.90)
-    logging.getLogger("jang").info("[Limits(MCMC)] %s, %s, %s, limit(Etot) = %.3e", gw.name, detector.name, parameters.spectrum, limit_etot)
+    logging.getLogger("jang").info("[Limits(MCMC)] %s, %s, %s, limit(Etot) = %.3e", gw.name, detector.name, parameters.flux, limit_etot)
     limit_fnu = upperlimit_from_sample(samples["fnu"], 0.90)
-    logging.getLogger("jang").info("[Limits(MCMC)] %s, %s, %s, limit(fnu) = %.3e", gw.name, detector.name, parameters.spectrum, limit_fnu)
+    logging.getLogger("jang").info("[Limits(MCMC)] %s, %s, %s, limit(fnu) = %.3e", gw.name, detector.name, parameters.flux, limit_fnu)
     
     return limit_phi, limit_eiso, limit_etot, limit_fnu

@@ -48,7 +48,7 @@ class JetVonMises(JetModelBase):
     def __init__(self, jet_opening: float, with_counter: bool = False):
         super().__init__(jet_opening)
         self.with_counter = with_counter
-        self.kappa = np.float128(1 / (self.jet_opening**2))
+        self.kappa = np.longdouble(1 / (self.jet_opening**2))
 
     def etot_to_eiso(self, viewing_angle: float) -> float:
         if np.isinf(self.jet_opening):
@@ -58,10 +58,7 @@ class JetVonMises(JetModelBase):
         return self.kappa * np.exp(self.kappa * np.cos(viewing_angle)) / np.sinh(self.kappa)
 
     def __repr__(self):
-        return "VonMises,%.1f deg%s" % (
-            np.rad2deg(self.jet_opening),
-            ",w/counter" if self.with_counter else "",
-        )
+        return "VonMises,%.1f deg%s" % (np.rad2deg(self.jet_opening), ",w/counter" if self.with_counter else "")
 
 
 class JetRectangular(JetModelBase):
@@ -83,10 +80,7 @@ class JetRectangular(JetModelBase):
         return 0
 
     def __repr__(self):
-        return "Constant,%.1f deg%s)" % (
-            self.jet_opening,
-            ",w/counter" if self.with_counter else "",
-        )
+        return "Constant,%.1f deg%s)" % (self.jet_opening, ",w/counter" if self.with_counter else "")
 
 
 def list_jet_models() -> List[JetModelBase]:
@@ -98,19 +92,6 @@ def list_jet_models() -> List[JetModelBase]:
             full_list.append(JetVonMises(opening, with_counter=with_counter))
             full_list.append(JetRectangular(opening, with_counter=with_counter))
     return full_list
-
-
-def phi_to_eiso(energy_range: tuple, spectrum: str = "x**-2", distance: float = 1) -> float:
-    """Convert from flux normalization to total isotropic energy for a given spectrum and distance."""
-    distance_cm = distance * Mpc_to_cm
-    f = eval("lambda y: %s * (np.exp(y))**2" % spectrum.replace("x", "np.exp(y)"))
-    integration = scipy.integrate.quad(f, *np.log(energy_range), limit=100)[0]
-    return integration * (4 * np.pi * distance_cm**2) / erg_to_GeV
-
-
-def eiso_to_phi(energy_range: tuple, spectrum: str = "x**-2", distance: float = 1) -> float:
-    """Convert from total isotropic energy to flux normalization for a given spectrum and distance."""
-    return 1 / phi_to_eiso(energy_range, spectrum, distance)
 
 
 def etot_to_eiso(viewing_angle: float, model: JetModelBase) -> float:

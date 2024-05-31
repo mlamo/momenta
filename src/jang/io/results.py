@@ -75,7 +75,7 @@ class ResDatabase:
                 parameters.ntoys_det_systematics if parameters.apply_det_systematics else ""
             ),
             "Parameters.energy_range": parameters.range_energy_integration,
-            "Parameters.neutrino_spectrum": parameters.spectrum,
+            # "Parameters.neutrino_spectrum": parameters.spectrum,
             "Parameters.jet_model": parameters.jet.__repr__(),
             "Results.limit_flux": limit_flux,
             "Results.limit_etot": limit_etot,
@@ -111,9 +111,9 @@ class ResDatabase:
         else:
             return ResDatabase(db=self.db[self.db["Detector.name"] == det.name])
 
-    def select_spectrum(self, spectrum: str):
-        """Select a given neutrino spectrum."""
-        return ResDatabase(db=self.db[self.db["Parameters.neutrino_spectrum"] == spectrum])
+    # def select_spectrum(self, spectrum: str):
+    #     """Select a given neutrino spectrum."""
+    #     return ResDatabase(db=self.db[self.db["Parameters.neutrino_spectrum"] == spectrum])
 
     def select_jetmodel(self, jetmodel: Union[JetModelBase, str]):
         """Select a given jet model."""
@@ -128,17 +128,17 @@ class ResDatabase:
     def select(
         self,
         det: Optional[Union[NuDetector, SuperNuDetector, str]] = None,
-        spectrum: Optional[str] = None,
+        # spectrum: Optional[str] = None,
         jetmodel: Optional[Union[JetModelBase, str]] = None,
         gwtype: Optional[str] = None,
     ):
-        if det is None and spectrum is None and jetmodel is None and gwtype is None:
+        if det is None and jetmodel is None and gwtype is None:
             logging.getLogger("jang").info("No selection is applied, return the infiltered database.")
         db = copy.copy(self)
         if det is not None:
             db = db.select_detector(det)
-        if spectrum is not None:
-            db = db.select_spectrum(spectrum)
+        # if spectrum is not None:
+        #     db = db.select_spectrum(spectrum)
         if jetmodel is not None:
             db = db.select_jetmodel(jetmodel)
         if gwtype is not None:
@@ -151,10 +151,9 @@ class ResDatabase:
             by=[
                 "GW.catalog",
                 "GW.name",
-                "Parameters.neutrino_spectrum",
                 "Parameters.jet_model",
             ],
-            ascending=[True, True, True, True],
+            ascending=[True, True, True],
             na_position="first",
             inplace=True,
         )

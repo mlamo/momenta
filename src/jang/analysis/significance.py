@@ -24,7 +24,7 @@ def compute_prob_null_hypothesis(detector: NuDetector, gw: GW, parameters: Param
         "[Significance] %s, %s, %s, P(H0 | data) = %.3g %%",
         gw.name,
         detector.name,
-        parameters.spectrum,
+        parameters.flux,
         100 * p0,
     )
     return p0

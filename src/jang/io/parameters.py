@@ -5,13 +5,14 @@ import os
 import yaml
 from typing import Optional
 
+from jang.utils.flux import FluxBase
 from jang.utils.conversions import JetModelBase
 
 
 class Parameters:
     def __init__(self, file: Optional[str] = None):
         self.file = None
-        self.spectrum = None
+        self.flux = None
         self.jet = None
         if file is not None:
             assert os.path.isfile(file)
@@ -50,10 +51,10 @@ class Parameters:
                     "Mixed",
                 ]
 
-    def set_models(self, spectrum: Optional[str] = None, jet: Optional[JetModelBase] = None):
-        """Set the neutrino spectrum model (format 'x**-2') and jet model."""
-        if spectrum is not None:
-            self.spectrum = spectrum
+    def set_models(self, flux: FluxBase, jet: JetModelBase):
+        """Set the neutrino flux model and jet model."""
+        if flux is not None:
+            self.flux = flux
         if jet is not None:
             self.jet = jet
 
@@ -61,8 +62,8 @@ class Parameters:
     def str_filename(self):
         """Get the representation of the parameters in string format for suffixing filenames."""
         str_model = []
-        if self.spectrum is not None:
-            str_model.append(self.spectrum.replace("x", "E").replace("**", ""))
+        if self.flux is not None:
+            str_model.append(str(self.flux))
         if self.jet is not None:
             str_model.append(self.jet.str_filename)
         return "_".join(str_model)
