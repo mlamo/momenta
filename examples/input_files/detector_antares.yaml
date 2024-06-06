@@ -6,11 +6,6 @@ samples:
   shortnames: ["TracksUp", "TracksDown", "ShowersUp", "ShowersDown"]
   energyrange: [5, 1e8]
 
-earth_location:
-  latitude: 42.800
-  longitude: 6.167
-  units: deg
-
 errors:
   acceptance: 0.20
   acceptance_corr: 1

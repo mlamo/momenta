@@ -11,10 +11,16 @@ erg_to_GeV = 624.15
 
 class Component(abc.ABC):
     
-    def __init__(self, emin, emax):
+    def __init__(self, emin, emax, store_acceptance=True):
         self.emin = emin
         self.emax = emax
+        self.store_acceptance = store_acceptance
+        self.shape_names = []
+        self.shape_pars = []
         pass
+    
+    def set_shape(self, shape):
+        self.shape_pars = shape
     
     @abc.abstractmethod  # pragma: no cover    
     def evaluate(self, energy):
@@ -36,19 +42,19 @@ class Component(abc.ABC):
     
 class PowerLaw(Component):
     
-    def __init__(self, emin, emax, spectral_index, eref=1):
-        super().__init__(emin=emin, emax=emax)
-        self.spectral_index = spectral_index
-        self.ncomponents = 1
-        self.eref = eref
+    def __init__(self, emin, emax, spectral_index, eref=1, store_acceptance=True):
+        super().__init__(emin=emin, emax=emax, store_acceptance=store_acceptance)
+        self.shape_names = ["gamma", "eref"]
+        self.shape_pars = [spectral_index, eref]
         
     def __str__(self):
-        return f"{type(self).__name__}/gamma={self.spectral_index}/{self.emin}--{self.emax}"
+        strshape = "/".join([f"{n}={p}" for n, p in zip(self.shape_names, self.shape_pars)])
+        return f"{type(self).__name__}/{self.emin}--{self.emax}/{strshape}"
     
     def evaluate(self, energy):
-        return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy/self.eref, -self.spectral_index), 0)
-    
-    
+        return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy/self.shape_pars[1], -self.shape_pars[0]), 0)
+
+
 class FluxBase(abc.ABC):
     
     def __init__(self):
@@ -67,8 +73,8 @@ class FluxBase(abc.ABC):
 
     def define_expected_signal(self, gw, itoygw, xacc, detector, nside):
         ipix = pm.Deterministic("ipix", gw[itoygw][0]).astype("int64")
-        acc = pm.Data("acc", [detector.get_acceptances(c, nside) for c in self.components], dims=("fluxcomponents", "nusample", "ipix"))
-        sig = pm.Deterministic("sig", 1/6 * self.norm.dot(xacc * acc[:,:,ipix]), dims="nusample")
+        acc = pm.Data("acc", [detector.get_acceptance_maps(c, nside) for c in self.components], dims=("fluxcomponents", "nusample", "ipix"))
+        sig = pm.Deterministic("sig", 1/6 * xacc * self.norm.dot(acc[:,:,ipix]), dims="nusample")
         return sig
     
     def define_auxiliary(self, gw, itoygw, parameters):

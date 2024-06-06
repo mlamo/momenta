@@ -6,11 +6,6 @@ samples:
   shortnames: ["FC", "PC", "UPMU"]
   energyrange: [0.1, 1e5]
 
-earth_location:
-  latitude: 36.425634
-  longitude: 137.310340
-  units: deg
-
 errors:
   acceptance: 0
   acceptance_corr: 1

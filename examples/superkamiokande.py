@@ -5,43 +5,31 @@ as well as the detector effective area in the format of 2D histograms with x=log
 The provided values in this example are all dummy, except for the effective area that is the one published in https://doi.org/10.5281/zenodo.4724822.
 """
 
-from collections.abc import Iterable
-import numpy as np
+import astropy.time
+import h5py
 import os
-import ROOT
-from typing import Union
+from scipy.interpolate import RegularGridInterpolator
 
 import jang.utils.conversions
+import jang.utils.flux
 import jang.analysis.limits
 import jang.analysis.significance
 from jang.io import GWDatabase, NuDetector, Parameters, ResDatabase
-from jang.io.neutrinos import EffectiveAreaBase, BackgroundFixed, NuSample
+from jang.io.neutrinos import EffectiveAreaAltitudeDep, BackgroundFixed
 
 
-class EffectiveAreaSK(EffectiveAreaBase):
-    def __init__(self, filename: str, sample: NuSample):
-        super().__init__(sample)
-        self.filename = filename
-        self.rootfile = self.rootgraphs = None
-        self.args_evaluate = ["altitude"]
-        self.read()
+class EffectiveAreaSK(EffectiveAreaAltitudeDep):
+    def __init__(self, filename: str, samplename: str, time: astropy.time.Time):
+        super().__init__()
+        self.read(filename, samplename)
+        self.set_location(time, 36.425634, 137.310340)
 
-    def read(self):
-        assert os.path.isfile(self.filename)
-        self.rootfile = ROOT.TFile(self.filename, "r")
-        self.rootgraphs = []
-        for flav in ("nue", "nueb", "numu", "numub"):
-            gname = f"Aeff_2D_{self.sample.shortname}_{flav}"
-            if self.rootfile.GetListOfKeys().Contains(gname):
-                self.rootgraphs.append(self.rootfile.Get(gname))
-
-    def evaluate(self, energy: Union[float, Iterable], altitude: float) -> Union[float, np.ndarray]:
-        if isinstance(energy, Iterable):
-            aeff = np.zeros_like(energy)
-            for i, x in enumerate(np.log10(energy)):
-                aeff[i] = np.sum([r.Interpolate(x, np.pi / 2 - altitude) for r in self.rootgraphs])
-            return aeff
-        return np.sum([r.Interpolate(np.log10(energy), np.pi / 2 - altitude) for r in self.rootgraphs])
+    def read(self, filename: str, samplename: str):
+        with h5py.File(filename, "r") as f:
+            bins_logenergy = f["bins_logenergy"][:]
+            bins_altitude = f["bins_altitude"][:]
+            aeff = f[f"aeff_{samplename}"][:]
+        self.func = RegularGridInterpolator((bins_logenergy, bins_altitude), aeff, bounds_error=False, fill_value=0)
 
 
 def single_event(gwname: str, gwdbfile: str, det_results: dict, pars: Parameters, dbfile: str = None):
@@ -59,14 +47,9 @@ def single_event(gwname: str, gwdbfile: str, det_results: dict, pars: Parameters
     database_res = ResDatabase(dbfile)
 
     sk = NuDetector("examples/input_files/detector_superk.yaml")
-    effarea_sk = [EffectiveAreaSK(filename=det_results["effarea"], sample=s) for s in sk.samples]
     gw = database_gw.find_gw(gwname)
 
-    accs = [
-        effarea.to_acceptance(sk, pars.nside, gw.jd, pars.spectrum)
-        for effarea in effarea_sk
-    ]
-    sk.set_acceptances(accs, pars.spectrum)
+    sk.set_effective_areas([EffectiveAreaSK(det_results["effarea"], s.shortname, gw.utc) for s in sk.samples])
     bkg = [BackgroundFixed(b) for b in det_results["nbkg"]]
     sk.set_observations(det_results["nobs"], bkg)
 
@@ -86,13 +69,13 @@ def single_event(gwname: str, gwdbfile: str, det_results: dict, pars: Parameters
 if __name__ == "__main__":
 
     parameters = Parameters("examples/input_files/config.yaml")
-    parameters.set_models("x**-2", jang.utils.conversions.JetIsotropic())
+    parameters.set_models(jang.utils.flux.FluxFixedPowerLaw(0.1, 1e6, 2), jang.utils.conversions.JetIsotropic())
     parameters.nside = 8
 
     gwdb = "examples/input_files/gw_catalogs/database_example.csv"
     detresults = {
         "nobs": [0, 0, 0],
         "nbkg": [0.112, 0.007, 0.016],
-        "effarea": "examples/input_files/effarea_superk.root",
+        "effarea": "examples/input_files/effarea_superk.h5",
     }
     single_event("GW190412", gwdb, detresults, parameters)

@@ -1,10 +1,11 @@
 """Utility functions to perform conversions."""
 
 import abc
+import astropy.cosmology.units as acu
 import astropy.time
+import astropy.units as u
 import datetime
 import numpy as np
-import scipy.integrate
 from typing import List
 
 Mpc_to_cm = 3.0856776e24
@@ -106,10 +107,29 @@ def fnu_to_etot(radiated_energy_gw: float) -> float:
 
 def utc_to_jd(dtime: datetime.datetime) -> float:
     """Convert from UTC time (datetime format) to julian date."""
-    t = astropy.time.Time(dtime, format="datetime")
-    return t.jd
+    return astropy.time.Time(dtime, format="datetime").jd
 
 
 def jd_to_mjd(jd: float) -> float:
     """Convert Julian Date to Modified Julian Date."""
     return jd - 2400000.5
+
+
+def redshift_to_lumidistance(redshift: float):
+    return (redshift * acu.redshift).to(u.Mpc, acu.redshift_distance(kind="luminosity"))
+    
+
+def lumidistance_to_redshift(distance: float):
+    return (distance * u.Mpc).to(acu.redshift, acu.redshift_distance(kind="luminosity"))
+
+
+def distance_scaling(distance: float, redshift: float|None = None):
+    """Returns the factor to scale from flux [/GeV/cm^2] to isotropic energy [erg]"""
+    f = 4 * np.pi
+    f *= ((distance*u.Mpc).to(u.cm).value)**2  # distance in cm
+    if redshift:
+        f *= 1 / (1+redshift)
+    else:
+        f *= 1 / (1+lumidistance_to_redshift(distance))
+    f *= (1*u.GeV).to(u.erg)  # energy in erg
+    return f

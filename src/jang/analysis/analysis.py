@@ -22,7 +22,7 @@ class Analysis:
 
     @cached_property
     def acceptances(self):
-        return self._detector.get_acceptances(self._parameters.flux.components[0], self._parameters.nside)
+        return self._detector.get_acceptance_maps(self._parameters.flux.components[0], self._parameters.nside)
 
     def prepare_toys(self, add_gw_vars: list = None, fixed_gwpixel: int = None):
         if add_gw_vars is not None:
