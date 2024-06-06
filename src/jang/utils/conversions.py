@@ -127,9 +127,9 @@ def distance_scaling(distance: float, redshift: float|None = None):
     """Returns the factor to scale from flux [/GeV/cm^2] to isotropic energy [erg]"""
     f = 4 * np.pi
     f *= ((distance*u.Mpc).to(u.cm).value)**2  # distance in cm
-    if redshift:
+    if redshift is not None:
         f *= 1 / (1+redshift)
     else:
         f *= 1 / (1+lumidistance_to_redshift(distance))
-    f *= (1*u.GeV).to(u.erg)  # energy in erg
+    f *= (1*u.GeV).to(u.erg).value  # energy in erg
     return f
