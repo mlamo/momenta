@@ -52,10 +52,10 @@ def get_limits(detector: NuDetectorBase, gw: GW, parameters: Parameters, method=
         limit_phi.append(upperlimit_from_sample(samples[f"phi{i}"], 0.90))
         logging.getLogger("jang").info("[Limits(MCMC-%s)] %s, %s, %s, limit(Flux%d) = %.3e", method, gw.name, detector.name, parameters.flux, i, limit_phi[-1])
     limit_eiso = upperlimit_from_sample(samples["eiso"], 0.90)
-    logging.getLogger("jang").info("[Limits(MCMC)] %s, %s, %s, limit(Eiso) = %.3e", gw.name, detector.name, parameters.flux, limit_eiso)
+    logging.getLogger("jang").info("[Limits(MCMC-%s)] %s, %s, %s, limit(Eiso) = %.3e", method, gw.name, detector.name, parameters.flux, limit_eiso)
     limit_etot = upperlimit_from_sample(samples["etot"], 0.90)
-    logging.getLogger("jang").info("[Limits(MCMC)] %s, %s, %s, limit(Etot) = %.3e", gw.name, detector.name, parameters.flux, limit_etot)
+    logging.getLogger("jang").info("[Limits(MCMC-%s)] %s, %s, %s, limit(Etot) = %.3e", method, gw.name, detector.name, parameters.flux, limit_etot)
     limit_fnu = upperlimit_from_sample(samples["fnu"], 0.90)
-    logging.getLogger("jang").info("[Limits(MCMC)] %s, %s, %s, limit(fnu) = %.3e", gw.name, detector.name, parameters.flux, limit_fnu)
+    logging.getLogger("jang").info("[Limits(MCMC-%s)] %s, %s, %s, limit(fnu) = %.3e", method, gw.name, detector.name, parameters.flux, limit_fnu)
     
     return limit_phi, limit_eiso, limit_etot, limit_fnu
