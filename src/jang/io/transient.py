@@ -2,6 +2,7 @@ import abc
 import astropy.coordinates
 import astropy.units as u
 import healpy as hp
+import logging
 import pandas as pd
 
 import jang.utils.conversions
@@ -12,9 +13,13 @@ class Transient:
     def __init__(self, name: str = None, logger: str = "jang"):
         self.name = name
         self.logger = logger
+       
+    @property 
+    def log(self):
+        return logging.getLogger(self.logger)
         
     @abc.abstractmethod
-    def prepare_prior_samples(self):
+    def prepare_prior_samples(self) -> pd.DataFrame:
         return
     
     
@@ -34,7 +39,7 @@ class PointSource(Transient):
         self.distance = jang.utils.conversions.redshift_to_lumidistance(redshift)
         self.redshift = redshift
         
-    def prepare_prior_samples(self, nside):
+    def prepare_prior_samples(self, nside: int) -> pd.DataFrame:
         toys = {}
         if self.err == 0 * u.deg:
             toys["ra"] = [self.coords.ra.deg]

@@ -12,66 +12,53 @@ import pandas as pd
 from typing import Optional, Tuple
 
 import jang.utils.conversions
-import jang.io
+from jang.io.transient import Transient
 
 
-class ToyGW:
-    def __init__(self, dic: dict):
-        for k, v in dic.items():
-            setattr(self, k, v)
-
-
-class GW:
+class GW(Transient):
     """Class to handle a full GW event, including FITS file (with skymap) and HDF5 file (with full posterior samples)."""
     
-    def __init__(self, name: str = None, path_to_fits: str = None, path_to_samples: str = None, logger: str = "jang"):
-        self.name = name
+    def __init__(self, path_to_fits: str = None, path_to_samples: str = None, name: str = None, logger: str = "jang"):
+        super().__init__(name=name, logger=logger)
         self.fits = None
         self.samples = None
         self.samples_priorities = None
-        self.logger = logger
         self.catalog = ""
         if path_to_fits is not None:
             self.set_fits(path_to_fits)
         if path_to_samples is not None:
             self.set_samples(path_to_samples)
-            
+         
     def set_fits(self, file: str):
         """Set GWFits object."""
         self.fits = _GWFits(file)
-        logging.getLogger(self.logger).info("[GW] Fits is loaded from the file %s", os.path.basename(file))
+        self.log.info("[GW] Fits is loaded from the file %s", os.path.basename(file))
         self.utc = self.fits.utc
-        self.jd = self.fits.jd
 
     def set_samples(self, file: str):
         """Set GWSamples object."""
         self.samples = _GWSamples(file)
         self.samples.priorities = self.samples_priorities
-        logging.getLogger(self.logger).info("[GW] Samples are loaded from the file %s", os.path.basename(file))
+        self.log.info("[GW] Samples are loaded from the file %s", os.path.basename(file))
 
     def set_parameters(self, pars: 'jang.io.Parameters'):
         """Define the relevant parameters (to be propagated)."""
         self.samples_priorities = pars.gw_posteriorsamples_priorities
         if self.samples is not None:
             self.samples.priorities = self.samples_priorities
-        
-    def prepare_toys(self, *variables, nside: int, region_restriction: Optional[np.ndarray] = None) -> dict:
+
+    def prepare_prior_samples(self, nside: int) -> pd.DataFrame:
         if self.samples:
-            if self.samples.priorities is None:
-                if self.samples_priorities is None:
-                    logging.getLogger(self.logger).error("[GW] Preparing toys using posterior samples require to call set_parameters() first.")
-                self.samples.priorities = self.samples_priorities
-            return self.samples.prepare_toys(*variables, nside=nside, region_restriction=region_restriction)
+            if self.samples_priorities is None:
+                self.log.error("[GW] Preparing toys using posterior samples require to call set_parameters() first.")
+            self.samples.priorities = self.samples_priorities
+            toys = pd.DataFrame(self.samples.prepare_toys(nside))
+            toys["distance_scaling"] = jang.utils.conversions.distance_scaling(toys.pop("luminosity_distance").to_numpy(), toys.pop("redshift").to_numpy())
+            return toys
         if self.fits:
-            missing_variables = []
-            for v in variables:
-                if v not in ("ra", "dec"):
-                    missing_variables.append(v)
-            if len(missing_variables) > 0:
-                logging.getLogger(self.logger).error("[GW] Cannot prepare toys using only FITS files as following variables are missing", missing_variables)
-            return self.fits.prepare_toys(nside, region_restriction)
-        logging.getLogger(self.logger).warning("[GW] No toys are generated as this GW event has no FITS file nor posterior samples.")
-        return None
+           return pd.DataFrame(data=self.fits.prepare_toys(nside))
+        self.log.warning("[GW] No toys are generated as this GW event has no FITS file nor posterior samples.")
+        return pd.DataFrame()
 
 
 class _GWFits:
@@ -82,7 +69,6 @@ class _GWFits:
         self.file = file
         header = fits.read_sky_map(self.file, nest=False)[1]
         self.utc = astropy.time.Time(header["gps_time"], format="gps").utc
-        self.jd = jang.utils.conversions.utc_to_jd(self.utc)
 
     def get_skymap(self, nside: int = None) -> np.ndarray:
         """Get the skymap from FITS file."""
@@ -112,24 +98,13 @@ class _GWFits:
         pixReg = iSort[: iSortMax + 1]
         return pixReg
 
-    def prepare_toys(self, nside: int, region_restriction: Optional[np.ndarray] = None) -> dict:
+    def prepare_toys(self, nside) -> dict:
         """Prepare GW toys with an eventual restriction to the considered sky region."""
         skymap = self.get_skymap(nside)
         toys = {}
         toys["ipix"] = np.random.choice(len(skymap), size=1000, p=skymap / np.sum(skymap))
         toys["ra"], toys["dec"] = hp.pix2ang(nside, toys["ipix"], lonlat=True)
-        if region_restriction is not None:
-            to_keep = [i for i, pix in enumerate(toys["ipix"]) if pix in region_restriction]
-            for k in toys.keys():
-                toys[k] = toys[k][to_keep]
-        ntoys = len(toys["ipix"])
-        toys = [ToyGW({k: v[i] for k, v in toys.items()}) for i in range(ntoys)]
         return toys
-
-    def prepare_toy(self, nside: int, fixed_pixel: int):
-        toy = {"ipix": fixed_pixel}
-        toy["ra"], toy["deg"] = hp.pix2ang(nside, fixed_pixel, lonlat=True)
-        return [ToyGW(toy)]
 
     def get_area_region(self, contained_prob: float, degrees: bool = True):
         region = self.get_signal_region(nside=128, contained_prob=contained_prob)
@@ -218,19 +193,11 @@ class _GWSamples:
             return "NSBH"
         return "BNS"
 
-    def prepare_toys(self, *variables, nside: int, region_restriction: Optional[np.ndarray] = None) -> dict:
-        """Prepare GW toys with an eventual restriction to the considered sky region."""
-        variables_to_get = list({*variables, "ra", "dec"})
+    def prepare_toys(self, nside) -> dict:
+        """Prepare GW toys from posterior samples."""
+        variables_to_get = ["ra", "dec", "luminosity_distance", "redshift", "radiated_energy", "theta_jn"]
         toys = self.get_variables(*variables_to_get)
-        dtypes = [(v, "f8") for v in variables_to_get]
-        toys["ipix"] = hp.ang2pix(nside, np.pi / 2 - toys["dec"], toys["ra"])
-        dtypes += [("ipix", "i8")]
-        if region_restriction is not None:
-            to_keep = [i for i, pix in enumerate(toys["ipix"]) if pix in region_restriction]
-            for k in toys.keys():
-                toys[k] = toys[k][to_keep]
-        ntoys = len(toys["ipix"])
-        toys = [ToyGW({k: v[i] for k, v in toys.items()}) for i in range(ntoys)]
+        toys["ipix"] = hp.ang2pix(nside, toys["ra"], toys["dec"], lonlat=True)
         return toys
 
 
@@ -267,7 +234,7 @@ class GWDatabase:
     def find_gw(self, name: str):
         if name not in self.db.index:
             raise RuntimeError("[GWDatabase] Missing index %s in the database." % name)
-        gw = GW(name, path_to_samples=self.db.loc[name]["h5_filepath"], path_to_fits=self.db.loc[name]["fits_filepath"])
+        gw = GW(name=name, path_to_samples=self.db.loc[name]["h5_filepath"], path_to_fits=self.db.loc[name]["fits_filepath"])
         gw.samples_priorities = self.samples_priorities
         gw.samples.priorities = self.samples_priorities
         if self.name is not None:

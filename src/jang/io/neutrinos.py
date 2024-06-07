@@ -55,9 +55,8 @@ class EffectiveAreaBase:
     def __init__(self):
         self.acceptances = {}
 
-    @abc.abstractmethod
     def evaluate(self, energy: float|np.ndarray, ipix: int, nside: int):
-        return
+        return 0
     
     def compute_acceptance(self, fluxcomponent, ipix: int, nside: int):
         def func(x: float):
@@ -83,10 +82,9 @@ class EffectiveAreaBase:
 
 class EffectiveAreaAllSky(EffectiveAreaBase):
     
-    def __init__(self, csvfile: str):
+    def __init__(self):
         super().__init__()
         self.func = None
-        self.read_csv(csvfile)
         
     def read_csv(self, csvfile: str):
         x, y = np.loadtxt(csvfile, delimiter=',').T
@@ -94,6 +92,10 @@ class EffectiveAreaAllSky(EffectiveAreaBase):
         
     def evaluate(self, energy: float|np.ndarray, ipix: int, nside: int):
         return self.func(energy)
+    
+    def compute_acceptance_map(self, fluxcomponent, nside):
+        acc = self.compute_acceptance(fluxcomponent, 0, nside) * np.ones(hp.nside2npix(nside))
+        return acc
     
 
 class EffectiveAreaDeclinationDep(EffectiveAreaBase):
@@ -288,12 +290,9 @@ class NuEvent:
 class NuSample:
     """Class to handle a given neutrino sample characterised by its name, observed events, expected background and PDFs."""
 
-    def __init__(self, name: str|None = None, shortname: str|None = None):
-        self.acceptances = {}
-        self.effective_area = None
+    def __init__(self, name: str|None = None):
         self.name = name
-        self.shortname = shortname if shortname is not None else name
-        self.energy_range = (None, None)
+        self.effective_area = None
         self.nobserved = np.nan
         self.background = None
         self.events = None
@@ -301,9 +300,6 @@ class NuSample:
             "signal": {"ang": None, "ene": None, "time": None},
             "background": {"ang": None, "ene": None, "time": None},
         }
-
-    def set_energy_range(self, emin: float, emax: float):
-        self.energy_range = (emin, emax)
 
     def set_effective_area(self, aeff):
         self.effective_area = aeff
@@ -336,32 +332,13 @@ class NuSample:
         self.pdfs["background"]["ang"] = bkg_ang
         self.pdfs["background"]["ene"] = bkg_ene
         self.pdfs["background"]["time"] = bkg_time
-
-    @property
-    def log_energy_range(self) -> tuple[float, float]:
-        return np.log(self.energy_range[0]), np.log(self.energy_range[1])
-
-    @property
-    def log10_energy_range(self) -> tuple[float, float]:
-        return np.log10(self.energy_range[0]), np.log10(self.energy_range[1])
-
-
-class ToyNuDet:
-    """Class to handle toys related to detector systematics."""
-
-    def __init__(self, nobserved: np.ndarray, nbackground: np.ndarray, var_acceptance: np.ndarray, events: list[list[NuEvent]]|None = None,):
-        self.nobserved = np.array(nobserved)
-        self.nbackground = np.array(nbackground)
-        self.var_acceptance = np.array(var_acceptance)
-        self.events = events
-
-    def __str__(self):
-        return "ToyNuDet: n(observed)=%s, n(background)=%s, var(acceptance)=%s, events=%s" % (
-            self.nobserved,
-            self.nbackground,
-            self.var_acceptance,
-            self.events,
-        )
+        
+    def compute_event_probability(self, nsig, nbkg, ev, ra_src, dec_src):
+        psig, pbkg = 1, 1
+        if self.pdfs["signal"]["ang"] is not None and self.pdfs["background"]["ang"]:
+            psig *= self.pdfs["signal"]["ang"](ev, ra_src, dec_src)
+            pbkg *= self.pdfs["background"]["ang"](ev)
+        return (nsig * psig + nbkg * pbkg) / (nsig + nbkg)
 
 
 class NuDetectorBase(abc.ABC):
@@ -382,40 +359,6 @@ class NuDetectorBase(abc.ABC):
    
     def get_acceptance_maps(self, fluxcomponent, nside):
         return [s.effective_area.get_acceptance_map(fluxcomponent, nside) for s in self.samples]
-    
-    def get_nonempty_acceptance_pixels(self, flux, nside: int):
-        accs = [self.get_acceptance_maps(c, nside) for c in flux.components]
-        accs = np.apply_over_axes(np.sum, np.array(accs), [0, 1])
-        return np.argwhere(accs > 0)
-
-    def prepare_toys(self, ntoys: int = 0) -> list[ToyNuDet]:
-
-        toys = []
-        nobserved = np.array([s.nobserved for s in self.samples])
-        background = np.array([s.background for s in self.samples])
-        events = [s.events for s in self.samples]
-
-        if np.any(np.isnan(nobserved)):
-            raise RuntimeError("[NuDetector] The number of observed events is not correctly filled.")
-
-        # if no toys
-        if ntoys == 0:
-            nbackground = [bkg.nominal for bkg in background]
-            toy = ToyNuDet(nobserved, nbackground, np.ones(self.nsamples), events)
-            return [toy]
-
-        # acceptance toys
-        toys_acceptance = multivariate_normal.rvs(mean=np.ones(self.nsamples), cov=self.error_acceptance, size=ntoys)
-        for i in range(ntoys):
-            while np.any(toys_acceptance[i] < 0):
-                toys_acceptance[i] = multivariate_normal.rvs(mean=np.ones(self.nsamples), cov=self.error_acceptance)
-
-        # background toys
-        toys_background = np.array([bkg.prepare_toys(ntoys) for bkg in background]).T
-
-        for i in range(ntoys):
-            toys.append(ToyNuDet(nobserved, toys_background[i], toys_acceptance[i], events))
-        return toys
 
 
 class NuDetector(NuDetectorBase):
@@ -446,19 +389,8 @@ class NuDetector(NuDetectorBase):
         else:
             raise TypeError("Unknown input format for Detector constructor")
         self.name = data["name"]
-        for i in range(data["nsamples"]):
-            smp = NuSample(
-                name=data["samples"]["names"][i],
-                shortname=data["samples"]["shortnames"][i] if "shortnames" in data["samples"] else None,
-            )
-            data["samples"]["energyrange"] = np.array(data["samples"]["energyrange"], dtype=float)
-            if data["samples"]["energyrange"].shape == (data["nsamples"], 2):
-                smp.set_energy_range(*data["samples"]["energyrange"][i])
-            elif data["samples"]["energyrange"].shape == (2,):
-                smp.set_energy_range(*data["samples"]["energyrange"])
-            else:
-                raise RuntimeError("[NuDetector] Unknown format for energy range.")
-            self._samples.append(smp)
+        for s in data["samples"]:
+            self._samples.append(NuSample(name=s))
         if "errors" in data:
             self.error_acceptance = data["errors"]["acceptance"]
             self.error_acceptance_corr = data["errors"]["acceptance_corr"]
@@ -480,9 +412,7 @@ class NuDetector(NuDetectorBase):
             smp.set_effective_area(aeffs[i])
 
     def check_errors_validity(self):
-        self.error_acceptance = infer_uncertainties(
-            self.error_acceptance, self.nsamples, correlation=self.error_acceptance_corr
-        )
+        self.error_acceptance = infer_uncertainties(self.error_acceptance, self.nsamples, correlation=self.error_acceptance_corr)
 
 
 class SuperNuDetector(NuDetectorBase):

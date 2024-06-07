@@ -1,16 +1,13 @@
 import emcee
-import healpy as hp
 import numpy as np
 from scipy.stats import multivariate_normal, poisson
 
-
-from jang.io import NuDetectorBase, GW, Parameters
-from jang.io.neutrinos import BackgroundFixed, BackgroundGaussian
+from jang.io import NuDetectorBase, Transient, Parameters
 
 
 class Model:
     
-    def __init__(self, detector: NuDetectorBase, gw: GW, parameters: Parameters):
+    def __init__(self, detector: NuDetectorBase, src: Transient, parameters: Parameters):
         self.nobs = np.array([s.nobserved for s in detector.samples])
         self.bkg = np.array([s.background for s in detector.samples])
         self.nsamples = detector.nsamples
@@ -18,12 +15,14 @@ class Model:
         self.acc_variations = parameters.apply_det_systematics and np.any(detector.error_acceptance != 0)
         if self.acc_variations:
             self.cov_acc = detector.error_acceptance
+        self.pointsource = (parameters.likelihood_method == "pointsource")
+        self.jetmodel = parameters.jet
         self.flux = parameters.flux
-        self.toysgw = gw.prepare_toys("ra", "dec", "luminosity_distance", "radiated_energy", "theta_jn", nside=parameters.nside)
-        self.toysgw = np.array([[toy.ipix, toy.luminosity_distance, toy.radiated_energy, toy.theta_jn] for toy in self.toysgw])
-        self.ntoysgw = len(self.toysgw)
-        self.accs = np.array([detector.get_acceptance_maps(c, parameters.nside) for c in self.flux.components])
-        
+        self.nside = parameters.nside
+        self.toys_src = src.prepare_prior_samples(parameters.nside)
+        self.ntoys_src = len(self.toys_src)
+        self.detector= detector
+
     @property
     def ndims(self):
         nd = self.flux.ncomponents + 1  # flux + GW toy
@@ -32,16 +31,27 @@ class Model:
         if self.acc_variations:
             nd += self.nsamples  # acceptance
         return nd
+
+    @property
+    def param_names(self):
+        params = [f"phi{i}" for i in range(self.flux.ncomponents)]
+        params += ["itoy"]
+        if self.bkg_variations:
+            params += [f"bkg{i}" for i in range(self.nsamples)]  # background
+        if self.acc_variations:
+            params += [f"facc{i}" for i in range(self.nsamples)]  # acceptance
+        return params
     
     def get_starting_points(self, n):
         p0 = np.random.rand(n, self.ndims)
         # flux normalizations
-        guesses = 10 * 1/np.max(np.average(self.accs, axis=2), axis=1)
+        accmax = np.array([np.max([s.effective_area.get_acceptance_map(c, self.nside) for s in self.detector.samples]) for c in self.flux.components])
+        guesses = 10 / accmax
         i = 0
         p0[:,i:i+self.flux.ncomponents] *= guesses
         # GW random starting point
         i += self.flux.ncomponents
-        p0[:,i] *= self.ntoysgw
+        p0[:,i] *= self.ntoys_src
         # Background scale
         if self.bkg_variations:
             i += 1
@@ -57,7 +67,7 @@ class Model:
         i = 0
         norm = x[i:i+self.flux.ncomponents]
         i += self.flux.ncomponents
-        itoygw = int(np.floor(x[i]))
+        itoy = int(np.floor(x[i]))
         i += 1
         if self.bkg_variations:
             nbkg = x[i:i+self.nsamples]
@@ -73,48 +83,41 @@ class Model:
         for n in norm:
             if n < 0:
                 return -np.inf
-        if not (0 <= itoygw < self.ntoysgw):
+        if not (0 <= itoy < self.ntoys_src):
             return -np.inf
         if np.any(nbkg < 0) or np.any(facc < 0):
             return -np.inf
 
         # likelihood
-        ipix = int(self.toysgw[itoygw][0])
-        acc = self.accs[:,:,ipix] / 6
-                
-        loglkl = np.sum(poisson.logpmf(self.nobs, nbkg + facc * np.array(norm).dot(acc)))
+        toy = self.toys_src.iloc[itoy]
+        acc = [[s.effective_area.get_acceptance(c, int(toy["ipix"]), self.nside) / 6 for s in self.detector.samples] for c in self.flux.components]
+        
+        nsig = facc * np.array(norm).dot(acc)
+        loglkl = np.sum(poisson.logpmf(self.nobs, nbkg + nsig))
+        if self.pointsource:
+            for i, s in enumerate(self.detector.samples):
+                if s.events is None:
+                    continue
+                for ev in s.events:
+                    loglkl += np.log(s.compute_event_probability(nsig[i], nbkg[i], ev, toy["ra"], toy["dec"]))
         if self.bkg_variations:
             loglkl += np.sum([b.logpdf(nbkg[i]) for i, b in enumerate(self.bkg)])
         if self.acc_variations:
             loglkl += multivariate_normal.logpdf(facc, mean=np.ones(self.nsamples), cov=self.cov_acc)
         return loglkl
+    
 
-
-def prepare_model(detector: NuDetectorBase, gw: GW, parameters: Parameters):
-    return Model(detector, gw, parameters)
+def prepare_model(detector: NuDetectorBase, src: Transient, parameters: Parameters):
+    return Model(detector, src, parameters)
 
 
 def run_mcmc(model):
 
     nwalkers = 32
     sampler = emcee.EnsembleSampler(nwalkers, model.ndims, model.log_prob)
-    state = sampler.run_mcmc(model.get_starting_points(nwalkers), 10000)
+    state = sampler.run_mcmc(model.get_starting_points(nwalkers), 1000)
     sampler.reset()
-    sampler.run_mcmc(state, 10000)
+    sampler.run_mcmc(state, 1000)
     samples = sampler.get_chain(flat=True)
     
-    # import matplotlib.pyplot as plt
-    # plt.close("all")
-    # _, ax = plt.subplots(1, 2, figsize=(10, 5), sharex=True)
-    # for i in range(nwalkers):
-    #     for j in range(2):
-    #         ax[j].plot(sampler.get_chain()[:,i,j])
-    # ax[0].set_xlabel(r"Step #")
-    # ax[1].set_xlabel(r"Step #")
-    # ax[0].set_ylabel(r"Norm[0]")
-    # ax[1].set_ylabel(r"itoygw")
-    # ax[0].set_yscale("log")
-    # plt.tight_layout()
-    # plt.savefig("test.png")
-    
-    return {"phi0": samples[:,0]}
+    return {k: v for k, v in zip(model.param_names, samples.transpose())}

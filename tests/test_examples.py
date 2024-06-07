@@ -31,7 +31,6 @@ class TestExamples(unittest.TestCase):
               nside: 8
               apply_det_systematics: 0
               ntoys_det_systematics: 0
-              search_region: region_90_excludezero
               likelihood: poisson
               prior_signal: flat
 
@@ -49,15 +48,7 @@ class TestExamples(unittest.TestCase):
             name: TestDet
 
             nsamples: 2
-            samples:
-              names: ["sampleA", "sampleB"]
-              shortnames: ["A", "B"]
-              energyrange: [0, 100]
-
-            earth_location:
-              latitude: 10.0
-              longitude: 50.0
-              units: deg
+            samples: ["A", "B"]
 
             errors:
               acceptance: 0.00
@@ -162,7 +153,7 @@ class TestExamples(unittest.TestCase):
         database_res.plot_flux(f"{self.tmpdir}/flux.png")
         database_res.plot_flux(f"{self.tmpdir}/flux.png", cat=cat)
         database_res.plot_summary_observations(
-            f"{self.tmpdir}/obs.png", {s.shortname: "black" for s in self.det.samples}
+            f"{self.tmpdir}/obs.png", {s.name: "black" for s in self.det.samples}
         )
         #
         stacking.stack_events(database_res, self.pars)

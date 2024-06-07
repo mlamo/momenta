@@ -1,10 +1,6 @@
 name: "Super-Kamiokande"
 
-nsamples: 3
-samples:
-  names: ["Fully-Contained", "Partially-Contained", "Upgoing muons"]
-  shortnames: ["FC", "PC", "UPMU"]
-  energyrange: [0.1, 1e5]
+samples: ["FC", "PC", "UPMU"]
 
 errors:
   acceptance: 0

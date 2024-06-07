@@ -2,16 +2,14 @@
 
 import abc
 import astropy.cosmology.units as acu
-import astropy.time
 import astropy.units as u
-import datetime
 import numpy as np
-from typing import List
 
-Mpc_to_cm = 3.0856776e24
-erg_to_GeV = 624.15
-solarmass_to_erg = 1.787e54
+from astropy.constants import M_sun, c
+
+
 second_to_day = 1 / 86400
+solarmass_to_erg = (M_sun*c**2).to(u.erg)
 
 
 class JetModelBase(metaclass=abc.ABCMeta):
@@ -84,7 +82,7 @@ class JetRectangular(JetModelBase):
         return "Constant,%.1f deg%s)" % (self.jet_opening, ",w/counter" if self.with_counter else "")
 
 
-def list_jet_models() -> List[JetModelBase]:
+def list_jet_models() -> list[JetModelBase]:
     """List all available jet models, with a scanning in opening angles."""
     full_list = []
     full_list.append(JetIsotropic())
@@ -93,26 +91,6 @@ def list_jet_models() -> List[JetModelBase]:
             full_list.append(JetVonMises(opening, with_counter=with_counter))
             full_list.append(JetRectangular(opening, with_counter=with_counter))
     return full_list
-
-
-def etot_to_eiso(viewing_angle: float, model: JetModelBase) -> float:
-    """Convert from total energy to the equivalent isotropic energy for a given jet model and viewing angle."""
-    return model.etot_to_eiso(viewing_angle)
-
-
-def fnu_to_etot(radiated_energy_gw: float) -> float:
-    """Convert from fraction of radiated energy to total energy."""
-    return radiated_energy_gw * solarmass_to_erg
-
-
-def utc_to_jd(dtime: datetime.datetime) -> float:
-    """Convert from UTC time (datetime format) to julian date."""
-    return astropy.time.Time(dtime, format="datetime").jd
-
-
-def jd_to_mjd(jd: float) -> float:
-    """Convert Julian Date to Modified Julian Date."""
-    return jd - 2400000.5
 
 
 def redshift_to_lumidistance(redshift: float):

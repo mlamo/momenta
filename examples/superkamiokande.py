@@ -11,9 +11,8 @@ import os
 from scipy.interpolate import RegularGridInterpolator
 
 import jang.utils.conversions
-import jang.utils.flux
-import jang.analysis.limits
-import jang.analysis.significance
+import jang.utils.flux as flux
+import jang.stats.mcmc as mcmc
 from jang.io import GWDatabase, NuDetector, Parameters, ResDatabase
 from jang.io.neutrinos import EffectiveAreaAltitudeDep, BackgroundFixed
 
@@ -49,19 +48,12 @@ def single_event(gwname: str, gwdbfile: str, det_results: dict, pars: Parameters
     sk = NuDetector("examples/input_files/detector_superk.yaml")
     gw = database_gw.find_gw(gwname)
 
-    sk.set_effective_areas([EffectiveAreaSK(det_results["effarea"], s.shortname, gw.utc) for s in sk.samples])
+    sk.set_effective_areas([EffectiveAreaSK(det_results["effarea"], s.name, gw.utc) for s in sk.samples])
     bkg = [BackgroundFixed(b) for b in det_results["nbkg"]]
     sk.set_observations(det_results["nobs"], bkg)
 
-    def pathpost(x):
-        return f"{os.path.dirname(dbfile)}/lkls/{x}_{gw.name}_{sk.name}_{pars.str_filename}" if dbfile is not None else None
-    limit_flux = jang.analysis.limits.get_limit_flux(sk, gw, pars, pathpost("flux"))
-    limit_etot = jang.analysis.limits.get_limit_etot(sk, gw, pars, pathpost("eiso"))
-    limit_fnu = jang.analysis.limits.get_limit_fnu(sk, gw, pars, pathpost("fnu"))
-
-    jang.analysis.significance.compute_prob_null_hypothesis(sk, gw, pars)
-
-    database_res.add_entry(sk, gw, pars, limit_flux, limit_etot, limit_fnu, pathpost("flux"), pathpost("eiso"), pathpost("fnu"))
+    limits = mcmc.get_limits(sk, gw, pars, method="multinest")
+    database_res.add_entry(sk, gw, pars, limits["phi0"], limits["etot"], limits["fnu"])
     if dbfile is not None:
         database_res.save()
 
@@ -69,7 +61,7 @@ def single_event(gwname: str, gwdbfile: str, det_results: dict, pars: Parameters
 if __name__ == "__main__":
 
     parameters = Parameters("examples/input_files/config.yaml")
-    parameters.set_models(jang.utils.flux.FluxFixedPowerLaw(0.1, 1e6, 2), jang.utils.conversions.JetIsotropic())
+    parameters.set_models(flux.FluxFixedPowerLaw(0.1, 1e6, 2), jang.utils.conversions.JetIsotropic())
     parameters.nside = 8
 
     gwdb = "examples/input_files/gw_catalogs/database_example.csv"

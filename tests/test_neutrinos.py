@@ -1,7 +1,4 @@
-from astropy.units import deg
-import healpy as hp
 import numpy as np
-from typing import Iterable, Union
 import unittest
 
 from jang.io.neutrinos import (
@@ -10,7 +7,6 @@ from jang.io.neutrinos import (
     BackgroundGaussian,
     BackgroundPoisson,
     NuDetector,
-    EffectiveAreaBase,
     NuSample,
     SuperNuDetector,
     ToyNuDet,
@@ -24,7 +20,7 @@ class TestSample(unittest.TestCase):
         self.s1.set_energy_range(1, 1000)
 
     def test_members(self):
-        self.assertEqual(self.s1.shortname, "sample")
+        self.assertEqual(self.s1.name, "sample")
         self.assertEqual(self.s1.log10_energy_range, (0, 3))
         self.assertEqual(self.s1.log_energy_range, (np.log(1), np.log(1000)))
         self.assertEqual(self.s1.nobserved, 0)
@@ -41,18 +37,14 @@ class TestDetector(unittest.TestCase):
         self.dict_det1 = {
             "name": "Test",
             "nsamples": 1,
-            "samples": {"names": ["smp"], "energyrange": [0, 1]},
+            "samples": ["sample1"],
             "earth_location": {"latitude": 0, "longitude": 0, "units": "deg"},
             "errors": {"acceptance": 0, "acceptance_corr": 0, "background": 0},
         }
         self.dict_det2 = {
             "name": "Test2",
             "nsamples": 4,
-            "samples": {
-                "names": ["sample1", "sample2", "sample3", "sample4"],
-                "shortnames": ["s1", "s2", "s3", "s4"],
-                "energyrange": [[0, 1], [0, 1], [0, 1], [0, 1]],
-            },
+            "samples": ["sample1", "sample2", "sample3", "sample4"],
             "earth_location": {"latitude": 10.0, "longitude": 5.0, "units": "deg"},
             "errors": {"acceptance": 0.40, "acceptance_corr": 1, "background": 0.40},
         }
@@ -73,7 +65,7 @@ class TestDetector(unittest.TestCase):
         self.assertEqual(self.d2.nsamples, 4)
         self.assertEqual(self.d1.name, "Test")
         self.assertEqual(len(self.d2.samples), 4)
-        self.assertEqual(self.d1.samples[0].shortname, "smp")
+        self.assertEqual(self.d1.samples[0].name, "sample1")
 
     def test_exceptions(self):
         self.dict_det1["samples"]["energyrange"] = 0

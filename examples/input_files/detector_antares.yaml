@@ -1,10 +1,6 @@
 name: ANTARES
 
-nsamples: 4
-samples:
-  names: ["upgoing tracks", "downgoing tracks", "upgoing showers", "downgoing showers"]
-  shortnames: ["TracksUp", "TracksDown", "ShowersUp", "ShowersDown"]
-  energyrange: [5, 1e8]
+samples: ["TracksUp", "TracksDown", "ShowersUp", "ShowersDown"]
 
 errors:
   acceptance: 0.20

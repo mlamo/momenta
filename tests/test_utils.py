@@ -49,12 +49,6 @@ class TestJetModels(unittest.TestCase):
         jang.utils.conversions.list_jet_models()
 
 
-class TestConversions(unittest.TestCase):
-    def test_fluxenergy(self):
-        jang.utils.conversions.etot_to_eiso(0.3, jang.utils.conversions.JetIsotropic())
-        jang.utils.conversions.fnu_to_etot(1)
-
-
 class TestGW(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
@@ -63,7 +57,6 @@ class TestGW(unittest.TestCase):
               nside: 8
               apply_det_systematics: 0
               ntoys_det_systematics: 0
-              search_region: region_90_excludezero
               likelihood: poisson
               prior_signal: flat
 
@@ -115,7 +108,6 @@ class TestParameters(unittest.TestCase):
               nside: -1
               apply_det_systematics: 0
               ntoys_det_systematics: 0
-              search_region: bestfit
               likelihood: poisson
               prior_signal: flat
 
@@ -128,22 +120,6 @@ class TestParameters(unittest.TestCase):
         self.config_file = f"{self.tmpdir}/config.yaml"
         with open(self.config_file, "w") as f:
             f.write(config_str)
-
-    def test_pars(self):
-        pars = Parameters(self.config_file)
-        pars.set_models("x**-2", jang.utils.conversions.JetIsotropic())
-        pars.str_filename
-        pars.search_region = "bestfit"
-        self.assertEqual(pars.get_searchregion_gwfraction(), 0)
-        self.assertTrue(pars.get_searchregion_iszeroincluded())
-        pars.search_region = "region_90"
-        self.assertEqual(pars.get_searchregion_gwfraction(), 0.90)
-        self.assertTrue(pars.get_searchregion_iszeroincluded())
-        pars.search_region = "region_90_excludezero"
-        self.assertEqual(pars.get_searchregion_gwfraction(), 0.90)
-        self.assertFalse(pars.get_searchregion_iszeroincluded())
-        pars.search_region = ""
-        self.assertEqual(pars.get_searchregion_gwfraction(), None)
 
 
 class TestStatTools(unittest.TestCase):

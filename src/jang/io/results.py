@@ -45,9 +45,9 @@ class ResDatabase:
         """Adds new entry to the database."""
         sample_names = []
         if isinstance(detector, NuDetector):
-            sample_names = [s.shortname for s in detector.samples]
+            sample_names = [s.name for s in detector.samples]
         elif isinstance(detector, SuperNuDetector):
-            sample_names = ["%s/%s" % (det.name, s.shortname) for det in detector.detectors for s in det.samples]
+            sample_names = ["%s/%s" % (det.name, s.name) for det in detector.detectors for s in det.samples]
         else:
             raise TypeError("Unsupported object as detector.")
 
@@ -71,9 +71,6 @@ class ResDatabase:
             "GW.distance_errorminus": dist[1] - dist[0],
             "GW.distance_errorplus": dist[2] - dist[1],
             "Parameters.systematics": "on" if parameters.apply_det_systematics else "off",
-            "Parameters.systematics.ntoys": (
-                parameters.ntoys_det_systematics if parameters.apply_det_systematics else ""
-            ),
             "Parameters.energy_range": parameters.range_energy_integration,
             # "Parameters.neutrino_spectrum": parameters.spectrum,
             "Parameters.jet_model": parameters.jet.__repr__(),

@@ -1,17 +1,7 @@
-analysis:
-  nside: -1  # -1 means that input skymaps will be used as is
-  apply_det_systematics: 0
-  ntoys_det_systematics: 0
-  search_region: region_90  # choices are 'fullsky', 'bestfit' or 'region_X' for X% containment. 
-  # search_region: region_90_excludezero  # the suffix "_excludezero" allows to exclude pixels with 0 acceptance 
-  likelihood: poisson  # choices are 'poisson', 'pointsource'
-  prior_signal: flat  # choices are 'flat', 'invsqrt', or 'jeffrey'
+skymap_resolution: 8
+detector_systematics: 0
 
-range:
-  log10_flux: [-5, 5, 1000]
-  log10_etot: [48, 62, 1400]
-  log10_fnu: [-5, 10, 1500]
-  neutrino_energy_GeV: [5, 1e8]
-
-# gw:
-#   sample_priorities: []
+mcmc:
+  likelihood: poisson
+  priors:
+    flux_normalisation: flat
