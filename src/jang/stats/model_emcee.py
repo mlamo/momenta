@@ -15,17 +15,15 @@ class Model:
         self.acc_variations = parameters.apply_det_systematics and np.any(detector.error_acceptance != 0)
         if self.acc_variations:
             self.cov_acc = detector.error_acceptance
-        self.pointsource = (parameters.likelihood_method == "pointsource")
-        self.jetmodel = parameters.jet
+        self.detector = detector
+        self.parameters = parameters
         self.flux = parameters.flux
-        self.nside = parameters.nside
         self.toys_src = src.prepare_prior_samples(parameters.nside)
         self.ntoys_src = len(self.toys_src)
-        self.detector= detector
 
     @property
     def ndims(self):
-        nd = self.flux.ncomponents + 1  # flux + GW toy
+        nd = self.flux.nparameters + 1  # flux + GW toy
         if self.bkg_variations:
             nd += self.nsamples  # background
         if self.acc_variations:
@@ -34,7 +32,8 @@ class Model:
 
     @property
     def param_names(self):
-        params = [f"phi{i}" for i in range(self.flux.ncomponents)]
+        params = [f"flux{i}_norm" for i in range(self.flux.ncomponents)]
+        params += [f"flux{i}_{s}" for i, c in enumerate(self.flux.components) for s in c.shape_names]
         params += ["itoy"]
         if self.bkg_variations:
             params += [f"bkg{i}" for i in range(self.nsamples)]  # background
@@ -44,18 +43,21 @@ class Model:
     
     def get_starting_points(self, n):
         p0 = np.random.rand(n, self.ndims)
-        # flux normalizations
-        accmax = np.array([np.max([s.effective_area.get_acceptance_map(c, self.nside) for s in self.detector.samples]) for c in self.flux.components])
-        guesses = 10 / accmax
+        # flux shapes
+        p0[:,self.flux.ncomponents:self.flux.nparameters] = [self.flux.prior_transform(pp0[self.flux.ncomponents:self.flux.nparameters]) for pp0 in p0]
         i = 0
-        p0[:,i:i+self.flux.ncomponents] *= guesses
+        for j in range(n):
+            self.flux.set_shapes(p0[j:,self.flux.ncomponents:self.flux.nparameters])
+            accmax = np.array([np.max([s.effective_area.get_acceptance_map(c, self.parameters.nside) for s in self.detector.samples]) for c in self.flux.components])
+            guesses = 10 / accmax
+            p0[j,i:i+self.flux.ncomponents] *= guesses
+        i += self.flux.nparameters
         # GW random starting point
-        i += self.flux.ncomponents
         p0[:,i] *= self.ntoys_src
         # Background scale
         if self.bkg_variations:
             i += 1
-            p0[:,i:i+self.nsamples] = np.array([b.prior_transformed(p0[:,i+j]) for j,b in enumerate(self.bkg)]).T
+            p0[:,i:i+self.nsamples] = np.array([b.prior_transform(p0[:,i+j]) for j,b in enumerate(self.bkg)]).T
         # Acceptance scale
         if self.acc_variations:
             i += self.nsamples
@@ -63,10 +65,11 @@ class Model:
         return p0
         
     def log_prob(self, x):
-
         i = 0
         norm = x[i:i+self.flux.ncomponents]
         i += self.flux.ncomponents
+        shapes = x[i:i+self.flux.nshapes]
+        i += self.flux.nshapes
         itoy = int(np.floor(x[i]))
         i += 1
         if self.bkg_variations:
@@ -78,23 +81,26 @@ class Model:
             facc = x[i:i+self.nsamples]
         else:
             facc = 1
-            
-        # prior boundaries
+        # Prior boundaries
         for n in norm:
             if n < 0:
+                return -np.inf
+        for s, sb in zip(shapes, self.flux.shape_boundaries):
+            if not (sb[0] <= s <= sb[1]):
                 return -np.inf
         if not (0 <= itoy < self.ntoys_src):
             return -np.inf
         if np.any(nbkg < 0) or np.any(facc < 0):
             return -np.inf
 
-        # likelihood
+        # Get acceptance
+        self.flux.set_shapes(shapes)
         toy = self.toys_src.iloc[itoy]
-        acc = [[s.effective_area.get_acceptance(c, int(toy["ipix"]), self.nside) / 6 for s in self.detector.samples] for c in self.flux.components]
-        
+        acc = [[s.effective_area.get_acceptance(c, int(toy["ipix"]), self.parameters.nside) / 6 for s in self.detector.samples] for c in self.flux.components]
+        # Compute log-likelihood
         nsig = facc * np.array(norm).dot(acc)
         loglkl = np.sum(poisson.logpmf(self.nobs, nbkg + nsig))
-        if self.pointsource:
+        if self.parameters.likelihood_method == "pointsource":
             for i, s in enumerate(self.detector.samples):
                 if s.events is None:
                     continue

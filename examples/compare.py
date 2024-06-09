@@ -22,6 +22,7 @@ mcmc:
   likelihood: poisson
   priors:
     flux_normalisation: flat
+    max_normalisation: 1e10
 """
 config_file = f"{tmpdir}/config.yaml"
 with open(config_file, "w") as f:
@@ -42,8 +43,7 @@ with open(det_file, "w") as f:
 def test():
     
     parameters = Parameters(config_file)
-    parameters.set_models("x**-2", jang.utils.conversions.JetIsotropic())
-    parameters.nside = 8
+    parameters.set_models(flux.FluxVariablePowerLaw(1, 1e6, eref=1e3), jang.utils.conversions.JetIsotropic())
     gw = GW(
             name="GW190412", 
             path_to_fits="examples/input_files/gw_catalogs/GW190412/GW190412_PublicationSamples.fits", 
@@ -57,8 +57,6 @@ def test():
         def evaluate(self, energy, ipix, nside):
             return energy**2 * np.exp(-energy/10000)
 
-    parameters.flux = flux.FluxFixedPowerLaw(1, 1000000, 2)
-    parameters.flux.components[0].store_acceptance = False
     det.set_effective_areas([EffAreaTest1()])
     det.set_observations([0], [BackgroundGaussian(0.5, 0.1)])
     
@@ -67,27 +65,24 @@ def test():
     
     N = 1
     parameters.apply_det_systematics = False
-    for _ in range(N):
-        t0 = time.time()
-        results["emcee_nosyst"].append(mcmc.get_limits(det, gw, parameters, method="emcee")[0][0])
-        times["emcee_nosyst"] += time.time() - t0
-        t0 = time.time()
-        results["multinest_nosyst"].append(mcmc.get_limits(det, gw, parameters, method="multinest")[0][0])
-        times["multinest_nosyst"] += time.time() - t0
+    for method in ("emcee", "ultranest", ):
+        for _ in range(N):
+            t0 = time.time()
+            results[f"{method}_nosyst"].append(mcmc.get_limits(det, gw, parameters, method=method)[0][0])
+            times[f"{method}_nosyst"] += time.time() - t0
 
-    N = 1
-    parameters.apply_det_systematics = True
-    for _ in range(N):
-        t0 = time.time()
-        results["emcee_wsyst"].append(mcmc.get_limits(det, gw, parameters, method="emcee")[0][0])
-        times["emcee_wsyst"] += time.time() - t0
-        t0 = time.time()
-        results["multinest_wsyst"].append(mcmc.get_limits(det, gw, parameters, method="multinest")[0][0])
-        times["multinest_wsyst"] += time.time() - t0
-
+    # N = 20
+    # parameters.apply_det_systematics = True
+    # for method in ("emcee", "multinest", "ultranest"):
+    #     for _ in range(N):
+    #         t0 = time.time()
+    #         results[f"{method}_wsyst"].append(mcmc.get_limits(det, gw, parameters, method=method)[0][0])
+    #         times[f"{method}_wsyst"] += time.time() - t0
+            
     # compute naive upper limits
     nside = 8
     best_ipix = np.argmax(gw.fits.get_skymap(nside))
+    parameters.flux.set_shapes([2])
     acc = EffAreaTest1().compute_acceptance(parameters.flux.components[0], best_ipix, nside)
     print(f"Naive UL = {2.3 / (acc/6):.2e}")
 

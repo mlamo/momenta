@@ -5,3 +5,4 @@ mcmc:
   likelihood: poisson
   priors:
     flux_normalisation: flat
+    max_normalisation: 1e10

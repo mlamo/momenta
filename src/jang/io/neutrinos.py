@@ -182,7 +182,7 @@ class Background(abc.ABC):
         """Function used by emcee."""
         pass
     
-    def prior_transformed(self):
+    def prior_transform(self):
         """Function used by multinest"""
         pass
 
@@ -204,7 +204,7 @@ class BackgroundFixed(Background):
     def logpdf(self, x):
         return np.where(x == self.b0, 0, -np.inf)
     
-    def prior_transformed(self, x):
+    def prior_transform(self, x):
         return self.b0
 
 
@@ -225,7 +225,7 @@ class BackgroundGaussian(Background):
     def logpdf(self, x):
         return truncnorm.logpdf(x, -self.b0 / self.error_b, np.inf, loc=self.b0, scale=self.error_b)
     
-    def prior_transformed(self, x):
+    def prior_transform(self, x):
         return truncnorm.ppf(x, -self.b0 / self.error_b, np.inf, loc=self.b0, scale=self.error_b)
 
 
@@ -246,7 +246,7 @@ class BackgroundPoisson(Background):
     def logpdf(self, x):
         return gamma.logpdf(x, self.Noff + 1, scale=1 / self.alpha_offon)
     
-    def prior_transformed(self, x):
+    def prior_transform(self, x):
         return gamma.ppf(x, self.Noff + 1, scale=1 / self.alpha_offon)
 
 
