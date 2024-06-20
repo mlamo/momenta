@@ -1,4 +1,3 @@
-import healpy as hp
 import numpy as np
 import tempfile
 import time
@@ -6,10 +5,11 @@ import time
 from collections import defaultdict
 
 from jang.io import GW, NuDetector, Parameters
-from jang.io.neutrinos import BackgroundGaussian, EffectiveAreaAllSky, EffectiveAreaDeclinationDep
+from jang.io.neutrinos import BackgroundGaussian, EffectiveAreaAllSky
+from jang.stats.run import run
+from jang.stats.limits import get_limits, get_limits_with_uncertainties
 import jang.utils.conversions
 import jang.utils.flux as flux
-import jang.stats.mcmc as mcmc
 
 
 tmpdir = tempfile.mkdtemp()
@@ -18,11 +18,11 @@ config_str = """
 skymap_resolution: 8
 detector_systematics: 0
 
-mcmc:
+analysis:
   likelihood: poisson
-  priors:
-    flux_normalisation: flat
-    max_normalisation: 1e10
+  prior_normalisation:
+    type: flat-linear
+    range: [1.0e-10, 1.0e+10]
 """
 config_file = f"{tmpdir}/config.yaml"
 with open(config_file, "w") as f:
@@ -43,7 +43,7 @@ with open(det_file, "w") as f:
 def test():
     
     parameters = Parameters(config_file)
-    parameters.set_models(flux.FluxVariablePowerLaw(1, 1e6, eref=1e3), jang.utils.conversions.JetIsotropic())
+    parameters.set_models(flux.FluxFixedPowerLaw(1, 1e6, 2, eref=1), jang.utils.conversions.JetIsotropic())
     gw = GW(
             name="GW190412", 
             path_to_fits="examples/input_files/gw_catalogs/GW190412/GW190412_PublicationSamples.fits", 
@@ -61,23 +61,59 @@ def test():
     det.set_observations([0], [BackgroundGaussian(0.5, 0.1)])
     
     results = defaultdict(list)
+    uncertainties = defaultdict(list)
     times = defaultdict(lambda: 0)
     
-    N = 1
+    N = 20
     parameters.apply_det_systematics = False
-    for method in ("emcee", "ultranest", ):
+    parameters.prior_normalisation = "flat-linear"
+    for method in ("emcee", "multinest", "ultranest", ):
         for _ in range(N):
             t0 = time.time()
-            results[f"{method}_nosyst"].append(mcmc.get_limits(det, gw, parameters, method=method)[0][0])
-            times[f"{method}_nosyst"] += time.time() - t0
+            model, result = run(det, gw, parameters, method)
+            if "weighted_samples" in result:
+                limits = get_limits_with_uncertainties(result["weighted_samples"], model)["flux0_norm"]
+                limit, unc = limits[0], limits[1]
+            else:
+                limit = get_limits(result["samples"], model)["flux0_norm"]
+                unc = np.nan
+            results[f"{method}_flatlin"].append(limit)
+            uncertainties[f"{method}_flatlin"].append(unc)
+            times[f"{method}_flatlin"] += time.time() - t0
 
-    # N = 20
-    # parameters.apply_det_systematics = True
-    # for method in ("emcee", "multinest", "ultranest"):
-    #     for _ in range(N):
-    #         t0 = time.time()
-    #         results[f"{method}_wsyst"].append(mcmc.get_limits(det, gw, parameters, method=method)[0][0])
-    #         times[f"{method}_wsyst"] += time.time() - t0
+    N = 20
+    parameters.apply_det_systematics = False
+    parameters.prior_normalisation = "flat-log"
+    for method in ("emcee", "multinest", "ultranest", ):
+        for _ in range(N):
+            t0 = time.time()
+            model, result = run(det, gw, parameters, method)
+            if "weighted_samples" in result:
+                limits = get_limits_with_uncertainties(result["weighted_samples"], model)["flux0_norm"]
+                limit, unc = limits[0], limits[1]
+            else:
+                limit = get_limits(result["samples"], model)["flux0_norm"]
+                unc = np.nan
+            results[f"{method}_flatlog"].append(limit)
+            uncertainties[f"{method}_flatlog"].append(unc)
+            times[f"{method}_flatlog"] += time.time() - t0
+            
+    N = 20
+    parameters.apply_det_systematics = False
+    parameters.prior_normalisation = "jeffreys-pois"
+    for method in ("emcee", "multinest", "ultranest", ):
+        for _ in range(N):
+            t0 = time.time()
+            model, result = run(det, gw, parameters, method)
+            if "weighted_samples" in result:
+                limits = get_limits_with_uncertainties(result["weighted_samples"], model)["flux0_norm"]
+                limit, unc = limits[0], limits[1]
+            else:
+                limit = get_limits(result["samples"], model)["flux0_norm"]
+                unc = np.nan
+            results[f"{method}_jeffreyspois"].append(limit)
+            uncertainties[f"{method}_jeffreyspois"].append(unc)
+            times[f"{method}_jeffreyspois"] += time.time() - t0
             
     # compute naive upper limits
     nside = 8
@@ -87,7 +123,7 @@ def test():
     print(f"Naive UL = {2.3 / (acc/6):.2e}")
 
     for k in results.keys():
-        print(f"{k:25s} => {np.average(results[k]):.2e} ± {np.std(results[k]):.2e}, TIME = {times[k]/N:.2f} s")
+        print(f"{k:25s} => {np.average(results[k]):.2e} ± {np.std(results[k]):.2e} ({np.average(uncertainties[k]):.2e}), TIME = {times[k]/N:.2f} s")
 
 
 if __name__ == "__main__":

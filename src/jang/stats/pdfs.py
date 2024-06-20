@@ -26,14 +26,13 @@ class PDF:
 
 
 class EnergySignal(PDF):
-    """The standard energy signal PDF is a function f(ra,dec,E)."""
+    """The standard energy signal PDF is a function f(ra,dec,E,flux)."""
 
-    def __init__(self, spectrum: str, func: Callable = None):
+    def __init__(self, func: Callable = None):
         self.func = func
-        self.spectrum = spectrum
 
-    def __call__(self, evt):
-        return self.func(evt.ra, evt.dec, evt.energy)
+    def __call__(self, evt, flux):
+        return self.func(evt.ra, evt.dec, evt.energy, flux)
 
 
 class AngularSignal(PDF):

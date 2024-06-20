@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 import healpy as hp
 import numpy as np
 import tempfile
@@ -8,7 +6,6 @@ import unittest
 from jang.io import Parameters, GWDatabase
 import jang.utils.conversions
 import jang.stats
-import jang.stats.priors
 
 
 class TestJetModels(unittest.TestCase):
@@ -53,18 +50,14 @@ class TestGW(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
         config_str = """
-            analysis:
-              nside: 8
-              apply_det_systematics: 0
-              ntoys_det_systematics: 0
-              likelihood: poisson
-              prior_signal: flat
+            skymap_resolution: 8
+            detector_systematics: 0
 
-            range:
-              log10_flux: [-5, 5, 1000]
-              log10_etot: [48, 62, 1400]
-              log10_fnu: [-5, 10, 1500]
-              neutrino_energy_GeV: [0.1, 1e8]
+            analysis:
+                likelihood: poisson
+                prior_normalisation:
+                    type: flat-linear
+                    range: [0.0, 10000000000]
         """
         self.config_file = f"{self.tmpdir}/config.yaml"
         with open(self.config_file, "w") as f:
@@ -73,7 +66,6 @@ class TestGW(unittest.TestCase):
         self.dbgw = GWDatabase("examples/input_files/gw_catalogs/database_example.csv")
         self.dbgw.set_parameters(self.pars)
         self.gw = self.dbgw.find_gw("GW190412")
-        print("setUp", self.gw.samples.priorities)
         self.tmpdir = tempfile.mkdtemp()
 
     def test_skymap(self):
@@ -120,20 +112,3 @@ class TestParameters(unittest.TestCase):
         self.config_file = f"{self.tmpdir}/config.yaml"
         with open(self.config_file, "w") as f:
             f.write(config_str)
-
-
-class TestStatTools(unittest.TestCase):
-    def test_lkl(self):
-        jang.stats.compute_upperlimit_from_x_y(np.zeros(10), np.zeros(10))
-        self.assertEqual(
-            jang.stats.compute_upperlimit_from_x_y(np.arange(10), np.arange(10)),
-            np.inf,
-        )
-        jang.stats.normalize(np.zeros(10), np.zeros(10))
-
-    def test_priors(self):
-        var, bkg, conv = np.arange(100), np.ones(10), np.ones(10)
-        jang.stats.priors.signal_parameter(var, bkg, conv, "flat")
-        jang.stats.priors.signal_parameter(var, bkg, conv, "jeffrey")
-        with self.assertRaises(RuntimeError):
-            jang.stats.priors.signal_parameter(var, bkg, conv, "missing")

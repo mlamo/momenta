@@ -1,5 +1,6 @@
 import abc
 import astropy.coordinates
+import astropy.time
 import astropy.units as u
 import healpy as hp
 import logging
@@ -10,8 +11,9 @@ import jang.utils.conversions
 
 class Transient:
     
-    def __init__(self, name: str = None, logger: str = "jang"):
+    def __init__(self, name: str = None, utc: astropy.time.Time|None = None, logger: str = "jang"):
         self.name = name
+        self.utc = utc
         self.logger = logger
        
     @property 
@@ -25,7 +27,8 @@ class Transient:
     
 class PointSource(Transient):
     
-    def __init__(self, ra_deg: float, dec_deg: float, err_deg: float, name: str = None, logger: str = "jang"):
+    def __init__(self, ra_deg: float, dec_deg: float, err_deg: float, name: str = None, utc: astropy.time.Time|None = None, logger: str = "jang"):
+        super().__init__(name, utc, logger)
         self.coords = astropy.coordinates.SkyCoord(ra=ra_deg*u.deg, dec=dec_deg*u.deg, frame="icrs")
         self.err = err_deg * u.deg
         self.distance = None

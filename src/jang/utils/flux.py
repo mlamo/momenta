@@ -1,12 +1,6 @@
 import abc
 import numpy as np
-import pymc as pm
 from scipy.integrate import quad
-
-import jang.utils.conversions
-
-Mpc_to_cm = 3.0856776e24
-erg_to_GeV = 624.15
 
 
 class Component(abc.ABC):
@@ -20,6 +14,19 @@ class Component(abc.ABC):
         self.shape_defaults = []
         self.shape_boundaries = []
         
+    def __str__(self):
+        s = f"{type(self).__name__}/{self.emin:.1e}--{self.emax:.1e}"
+        if len(self.shape_names) == 0:
+            return s
+        strshape = "/".join([f"{n}={v}" for n, v in zip(self.shape_names, self.shape_values)])
+        return s + "/" + strshape
+    
+    def __eq__(self, other):
+        return self.__dict__ == other.__dict__
+    
+    def __hash__(self):
+        return hash(self.__str__())
+
     @property
     def nshapes(self):
         return len(self.shape_names)
@@ -30,13 +37,6 @@ class Component(abc.ABC):
     @abc.abstractmethod
     def evaluate(self, energy):
         return None
-    
-    def __eq__(self, other):
-        return self.__dict__ == other.__dict__
-    def __str__(self):
-        return type(self).__name__
-    def __hash__(self):
-        return hash(self.__str__())
 
     def flux_to_eiso(self, distance_scaling):
         f = lambda x: self.evaluate(np.exp(x)) * (np.exp(x))**2
@@ -54,12 +54,9 @@ class PowerLaw(Component):
         super().__init__(emin=emin, emax=emax, store_acceptance=False)
         self.shape_names = ["gamma"]
         self.shape_defaults = [2]
+        self.shape_values = self.shape_defaults
         self.shape_boundaries = [(2, 3)]
         self.eref = eref
-
-    def __str__(self):
-        strshape = "/".join([f"{n/v}" for n, v in zip(self.shape_names, self.shape_values)])
-        return f"{type(self).__name__}/{self.emin}--{self.emax}/{strshape}"
 
     def evaluate(self, energy):
         return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy/self.eref, -self.shape_values[0]), 0)
@@ -76,8 +73,7 @@ class FixedPowerLaw(Component):
         self.eref = eref
         
     def __str__(self):
-        strshape = "/".join([f"{n}={p}" for n, p in zip(self.shape_names, self.shape_pars)])
-        return f"{type(self).__name__}/{self.emin}--{self.emax}/{strshape}"
+        return f"{super().__str__()}/gamma={self.spectral_index}"
     
     def evaluate(self, energy):
         return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy/self.eref, -self.spectral_index), 0)
@@ -87,6 +83,9 @@ class FluxBase(abc.ABC):
     
     def __init__(self):
         self.components = []
+        
+    def __str__(self):
+        return '__'.join([str(c) for c in self.components])
 
     @property 
     def ncomponents(self):

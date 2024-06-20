@@ -22,10 +22,10 @@ class Parameters:
             # analysis parameters
             self.nside = params.get("skymap_resolution")
             self.apply_det_systematics = bool(params["detector_systematics"])
-            self.likelihood_method = params["mcmc"]["likelihood"]
+            self.likelihood_method = params["analysis"]["likelihood"]
             # signal priors
-            self.prior_flux_normalisation = params["mcmc"]["priors"]["flux_normalisation"]
-            self.max_flux_normalisation = float(params["mcmc"]["priors"]["max_normalisation"])
+            self.prior_normalisation = params["analysis"]["prior_normalisation"]["type"]
+            self.prior_normalisation_range = params["analysis"]["prior_normalisation"]["range"]
             # GW parameters
             if "gw" in params and "sample_priorities" in params["gw"]:
                 self.gw_posteriorsamples_priorities = params["gw"]["sample_priorities"]

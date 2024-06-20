@@ -1,8 +1,8 @@
 skymap_resolution: 8
 detector_systematics: 0
 
-mcmc:
+analysis:
   likelihood: poisson
-  priors:
-    flux_normalisation: flat
-    max_normalisation: 1e10
+  prior_normalisation:
+    type: flat-linear
+    range: [0.0, 10000000000]

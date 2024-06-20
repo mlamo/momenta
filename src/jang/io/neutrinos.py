@@ -13,7 +13,7 @@ import yaml
 from scipy.integrate import quad
 from scipy.interpolate import interp1d, RegularGridInterpolator
 from scipy.linalg import block_diag
-from scipy.stats import gamma, multivariate_normal, truncnorm
+from scipy.stats import gamma, truncnorm
 
 import astropy.coordinates
 import astropy.time
@@ -102,7 +102,6 @@ class EffectiveAreaDeclinationDep(EffectiveAreaBase):
     
     def __init__(self):
         super().__init__()
-        self.func = None
         self.mapping = {}
         
     def evaluate(self, energy: float|np.ndarray, ipix: int, nside: int):
@@ -333,12 +332,15 @@ class NuSample:
         self.pdfs["background"]["ene"] = bkg_ene
         self.pdfs["background"]["time"] = bkg_time
         
-    def compute_event_probability(self, nsig, nbkg, ev, ra_src, dec_src):
-        psig, pbkg = 1, 1
+    def compute_event_probability(self, nsigs, nbkg, ev, ra_src, dec_src, flux):
+        psig, pbkg = np.ones_like(nsigs), 1
         if self.pdfs["signal"]["ang"] is not None and self.pdfs["background"]["ang"]:
             psig *= self.pdfs["signal"]["ang"](ev, ra_src, dec_src)
             pbkg *= self.pdfs["background"]["ang"](ev)
-        return (nsig * psig + nbkg * pbkg) / (nsig + nbkg)
+        if self.pdfs["signal"]["ene"] is not None and self.pdfs["background"]["ene"]:
+            psig *= self.pdfs["signal"]["ene"](ev, flux)
+            pbkg *= self.pdfs["background"]["ene"](ev)
+        return (psig.dot(nsigs) + nbkg * pbkg) / (np.sum(nsigs) + nbkg)
 
 
 class NuDetectorBase(abc.ABC):

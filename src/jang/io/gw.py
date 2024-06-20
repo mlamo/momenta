@@ -247,7 +247,7 @@ class GWDatabase:
     def list(self, gwtype: Optional[str] = None, mindist: Optional[float] = None, maxdist: Optional[float] = None):
         selected_gw = []
         for idx, ev in self.db.iterrows():
-            gw = GW(idx, ev["fits_filepath"], ev["h5_filepath"], logger="")
+            gw = GW(name=idx, path_to_fits=ev["fits_filepath"], path_to_samples=ev["h5_filepath"], logger="")
             gw.samples.priorities = self.samples_priorities
             selected = True
             if gwtype is not None and gw.samples.type != gwtype:
