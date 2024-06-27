@@ -6,7 +6,13 @@ from jang.utils.conversions import solarmass_to_erg
 
 
 def calculate_deterministics(samples, model):
+    """Calculate different deterministic quantities:
+        - eiso: total energy emitted in neutrinos assuming isotropic emission [in erg]
+        - etot: total energy emitted in neutrinos assuming model=parameters.jet and using `theta_jn` as jet orientation w.r.t. Earth [in erg]
+        - fnu: ratio between total energy in neutrinos `etot` and radiated energy in GW using `radiated_energy` [no units]
+    """
     det = {}
+    # Stop here if distance is not provided
     if "distance_scaling" not in model.toys_src.columns:
         return det
     itoys = samples["itoy"]
@@ -21,14 +27,17 @@ def calculate_deterministics(samples, model):
             det["eiso"][isample] = np.sum(norms * model.flux.flux_to_eiso(distance_scaling[isample]))        
     else:
         det["eiso"] = np.sum(norms + model.flux.flux_to_eiso(distance_scaling), axis=0)
-    if "theta_jn" not in model.toys_src.columns:
+    if "radiated_energy" in model.toys_src.columns:
+        radiated_energy = model.toys_src.iloc[itoys]["radiated_energy"].to_numpy()
+        det["fnuiso"] = det["eiso"] / (radiated_energy * solarmass_to_erg)
+    # Stop here if jet model is not provided or if `theta_jn`` is missing
+    if model.parameters.jet is None or "theta_jn" not in model.toys_src.columns:
         return det
     theta_jn = model.toys_src.iloc[itoys]["theta_jn"].to_numpy()
     det["etot"] = det["eiso"] / model.parameters.jet.etot_to_eiso(theta_jn)
-    if "radiated_energy" not in model.toys_src.columns:
-        return det
-    radiated_energy = model.toys_src.iloc[itoys]["radiated_energy"].to_numpy()
-    det["fnu"] = det["etot"] / (radiated_energy * solarmass_to_erg)
+    if "radiated_energy" in model.toys_src.columns:
+        radiated_energy = model.toys_src.iloc[itoys]["radiated_energy"].to_numpy()
+        det["fnu"] = det["etot"] / (radiated_energy * solarmass_to_erg)
     return det
 
 

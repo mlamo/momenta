@@ -46,7 +46,7 @@ class Parameters:
                     "Mixed",
                 ]
 
-    def set_models(self, flux: FluxBase, jet: JetModelBase):
+    def set_models(self, flux: FluxBase = None, jet: JetModelBase = None):
         """Set the neutrino flux model and jet model."""
         if flux is not None:
             self.flux = flux
