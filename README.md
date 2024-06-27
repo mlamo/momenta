@@ -7,33 +7,36 @@
 
 # Method
 
-This framework is using a Bayesian approach to convert observations from neutrino telescopes to constraints on the neutrino emission from transient astrophysical sources. It is aimed to combine observations from several neutrino samples into a signle set of constraints.
+This framework is using a Bayesian approach to convert observations from neutrino telescopes to constraints on the neutrino emission from transient astrophysical sources. It is aimed to combine observations from several neutrino samples into a single set of constraints.
 
 ## Inputs
 
 The input ingredients from neutrino side are:
-* number of observed events in each neutrino sample → $$N_{s}$$
-* number of expected background events in each neutrino sample (see below) → $$B_{s}$$
-* detector effective area as a function of neutrino energy and direction → $$A_{\rm eff,s}(E,\Omega)$$
-* OPTIONAL: list of observed events with their time, direction, and energy → events$$_{s}$$
-* OPTIONAL: other instrumental response functions such as angular and energy pdf for signal and background hypotheses → $$S_{\rm ang,s}$$, $$B_{\rm ang,s}$$, $$S_{\rm ene,s}$$, $$B_{\rm ene,s}$$
+* number of observed events in each neutrino sample → $N_{s}$
+* number of expected background events in each neutrino sample (see below) → $B_{s}$
+* detector effective area as a function of neutrino energy and direction → $A_{\rm eff,s}(E,\Omega)$
+* OPTIONAL: list of observed events with their time, direction, and energy → $\{\text{ev}_{i,s}\}$
+* OPTIONAL: other instrumental response functions such as angular and energy pdf for signal and background hypotheses → $S_{\rm ang,s}$, $B_{\rm ang,s}$, $S_{\rm ene,s}$, $B_{\rm ene,s}$
 
 The inputs from transient source are:
-* localisation of the source (see below) → $$\Omega_{\rm src}$$
+* localisation of the source (see below) → $\Omega_{\rm src}$
 * OPTIONAL: time of the event
 * OPTIONAL: other information that may be relevant for astrophysical interpretations (lunimosity distance, redshift...)
 
 Other general inputs:
-* assumed neutrino energy spectrum which may include several components → $$F(E) = \sum_{i=1}^{N_c} \phi_i \times f_i(E)$$
-* priors on the flux normalisation → $$\pi(\phi_i)$$ (can be uniform in linear/log scale, etc...)
+* assumed neutrino energy spectrum which may include several components → $F(E) = \sum_{i=1}^{N_c} \phi_i \times f_i(E)$
+* priors on the flux normalisation → $\pi(\phi_i)$ (can be uniform in linear/log scale, etc...)
 * OPTIONAL: assumed jet structure
 
 ### Expected background
 
 The expected background will be incorporated as a prior in the analysis. Three scenarii are implemented:
-* fixed background: $$\pi(B_s \vert B_{s,0}) = \delta(B_s - B_{s,0})$$ → user should provide $$B_{s,0}$$
-* Gaussian background: $$\pi(B_s \vert B_{s,0}, \sigma_{B_s}) = \textrm{Gaus}(B_s; \mu=B_{s,0}, \sigma=\sigma_{B_s})$$ → user should provide mean $$B_{s,0}$$ and error $$\sigma_{B_s}$$
-* background from ON/OFF measurement: $$\pi(B_s \vert N^{\rm off}_s, \alpha^{\rm OFF/ON}_s) = \textrm{Poisson}(N_{\rm OFF}; B_{s} \times \alpha^{\rm OFF/ON}_s)$$
+* fixed background: $\pi(B_s \vert B_{s,0}) = \delta(B_s - B_{s,0})$
+ → user should provide $B_{s,0}$
+* Gaussian background: $\pi(B_s \vert B_{s,0}, \sigma_{B_s}) = \textrm{Gaus}(B_s; \mu=B_{s,0}, \sigma=\sigma_{B_s})$
+ → user should provide mean $B_{s,0}$ and error $\sigma_{B_s}$
+* background from ON/OFF measurement: $\pi(B_s \vert N^{\rm off}_s, \alpha^{\rm OFF/ON}_s) = \textrm{Poisson}(N_{\rm OFF}; B_{s} \times \alpha^{\rm OFF/ON}_s)$
+ → user should provide observed number of events in OFF region $N^{\rm off}_s$ and ratio between OFF and ON $\alpha^{\rm OFF/ON}_s)$
 
 The backgrounds in the different samples are assumed to be uncorrelated.
 
@@ -46,12 +49,31 @@ Additional uncertainties on the effective area may be incorporated as prior. For
 Different source types may be considered, but the two already implemented are:
 * using GW posterior samples describing the localisation of the source
 * fixed equatorial coordinates
-Generally, these are represented by a prior $$\pi(\Omega_{\rm src})$$ (that is trivial for the second case).
+Generally, these are represented by a prior $\pi(\Omega_{\rm src})$ (that is trivial for the second case).
+
+## Likielihood for one given sample
+
+The likelihood may be defined for two different cases:
+* if we want to perform a simple cut&count search (cc), the likelihood will simply be a Poisson term
+* if we want to perform a point-source-like analysis (ps), the likelihood will incorporate both a Poisson term and the angualr/energy pdfs
+
+In both case, we need to define the expected number of signal events $N_{\rm sig,s}$ that depends on all the relevant inputs:
+$$N_{\rm sig,s}(\{\phi_i\}, \Omega_{\rm src}) = \sum_i \phi_i \int A_{\rm eff,s}(E,\Omega_{\rm src}) \times f_i(E) {\rm d}E$$
+
+We can then write the two likelihoods:
+
+$$\mathcal{L}_{cc}(N_{s} \vert \{\phi_i\}, B_s, \Omega_{\rm src}) = \textrm{Poisson}\left(N_s; B_s + N_{\rm sig,s}(\{\phi_i\}, \Omega_{\rm src})\right)$$
+$$\mathcal{L}_{ps}(N_{s}, \{\text{ev}_{j,s}\} \vert \{\phi_i\}, B_s, \Omega_{\rm src}) = \mathcal{L}_{cc}(N_{s}, \vert \{\phi_i\}, B_s, \Omega_{\rm src}) \times \prod_{j \in s} \dfrac{B_s p_{\rm bkg}(\text{ev}_j) + N_{\rm sig,s}(\{\phi_i\}, \Omega_{\rm src}) p_{\rm sig}(\text{ev}_j \vert \{\phi_i\}, \Omega_{\rm src})}{B_s + N_{\rm sig,s}(\{\phi_i\}, \Omega_{\rm src})}
+
+In the point-source case, $p_{\rm bkg}$ and $p_{\rm sig}$ are the probabilities for event $j$ to be background or signal. These are built from the instrumental response functions. For instance, if we just incorporate the point-spread function, we have:
+* $p_{\rm bkg}(\text{ev}_j) = f(\Omega_j)$ depends solely on event direction $\Omega_j$ and described how likely this direction is in the background hypothesis, the function is normalized such that $\int f(\Omega) d\Omega = 1$
+* $p_{\rm sig}(\text{ev}_j) = g(\Omega_j, \sigma_j, \Omega_{\rm src})$ depends on event direction $\Omega_j$, uncertainty on this direction, and source direction. The function is normalized such that $\int g(\Omega, \sigma_j, \Omega_{\rm src}) d\Omega = 1$ for any value of $\sigma_j$ and $\Omega_{\rm src}$.
 
 ## Posterior probability
 
 Generally, we define the posterior probability as the product of the contribution of the different neutrino samples and all the priors:
-$$P(\{phi_i\}, \{B_s\}, \Omega_{\rm src}, \ldots) = \prod_s \mathcal{L}(N_{s}, \text{events}_{s} \vert \{phi_i\}, B_s, \Omega_{\rm src}) \times \prod_s \pi(B_s) \times \pi(\Omega_{\rm src}) \times \pi(\{\phi_i\})$$
+
+$$P(\{phi_i\}, \{B_s\}, \Omega_{\rm src}, \ldots) = \prod_s \mathcal{L}(N_{s}, \{\text{ev}_{j,s}\} \vert \{\phi_i\}, B_s, \Omega_{\rm src}) \times \prod_s \pi(B_s) \times \pi(\Omega_{\rm src}) \times \pi(\{\phi_i\})$$
 
 
 # Installation
