@@ -63,17 +63,48 @@ $$N_{\rm sig,s}(\{\phi_i\}, \Omega_{\rm src}) = \sum_i \phi_i \int A_{\rm eff,s}
 We can then write the two likelihoods:
 
 $$\mathcal{L}_{cc}(N_{s} \vert \{\phi_i\}, B_s, \Omega_{\rm src}) = \textrm{Poisson}\left(N_s; B_s + N_{\rm sig,s}(\{\phi_i\}, \Omega_{\rm src})\right)$$
-$$\mathcal{L}_{ps}(N_{s}, \{\text{ev}_{j,s}\} \vert \{\phi_i\}, B_s, \Omega_{\rm src}) = \mathcal{L}_{cc}(N_{s}, \vert \{\phi_i\}, B_s, \Omega_{\rm src}) \times \prod_{j \in s} \dfrac{B_s p_{\rm bkg}(\text{ev}_j) + N_{\rm sig,s}(\{\phi_i\}, \Omega_{\rm src}) p_{\rm sig}(\text{ev}_j \vert \{\phi_i\}, \Omega_{\rm src})}{B_s + N_{\rm sig,s}(\{\phi_i\}, \Omega_{\rm src})}
+
+$$\mathcal{L}_{ps}(N_{s}, \{\text{ev}_{j,s}\} \vert \{\phi_i\}, B_s, \Omega_{\rm src}) = \mathcal{L}_{cc}(N_{s}, \vert \{\phi_i\}, B_s, \Omega_{\rm src}) \times \prod_{j \in s} \dfrac{B_s p_{\rm bkg}(\text{ev}_j) + N_{\rm sig,s}(\{\phi_i\}, \Omega_{\rm src}) p_{\rm sig}(\text{ev}_j \vert \{\phi_i\}, \Omega_{\rm src})}{B_s + N_{\rm sig,s}(\{\phi_i\}, \Omega_{\rm src})}$$
 
 In the point-source case, $p_{\rm bkg}$ and $p_{\rm sig}$ are the probabilities for event $j$ to be background or signal. These are built from the instrumental response functions. For instance, if we just incorporate the point-spread function, we have:
-* $p_{\rm bkg}(\text{ev}_j) = f(\Omega_j)$ depends solely on event direction $\Omega_j$ and described how likely this direction is in the background hypothesis, the function is normalized such that $\int f(\Omega) d\Omega = 1$
-* $p_{\rm sig}(\text{ev}_j) = g(\Omega_j, \sigma_j, \Omega_{\rm src})$ depends on event direction $\Omega_j$, uncertainty on this direction, and source direction. The function is normalized such that $\int g(\Omega, \sigma_j, \Omega_{\rm src}) d\Omega = 1$ for any value of $\sigma_j$ and $\Omega_{\rm src}$.
+* $p_{\rm bkg}(\text{ev}_j) = a(\Omega_j)$ depends solely on event direction $\Omega_j$ and described how likely this direction is in the background hypothesis.
+* $p_{\rm sig}(\text{ev}_j) = a(\Omega_j, \sigma_j, \Omega_{\rm src})$ depends on event direction $\Omega_j$, uncertainty on this direction, and source direction. 
+These functions are normalized such that $\int a(\Omega, \ldots) d\Omega = 1$.
 
 ## Posterior probability
 
-Generally, we define the posterior probability as the product of the contribution of the different neutrino samples and all the priors:
+Generally, we define the posterior probability distribution function as the product of the contribution of the different neutrino samples and all the priors:
 
-$$P(\{phi_i\}, \{B_s\}, \Omega_{\rm src}, \ldots) = \prod_s \mathcal{L}(N_{s}, \{\text{ev}_{j,s}\} \vert \{\phi_i\}, B_s, \Omega_{\rm src}) \times \prod_s \pi(B_s) \times \pi(\Omega_{\rm src}) \times \pi(\{\phi_i\})$$
+$$P(\{\phi_i\}, \{B_s\}, \Omega_{\rm src} \vert \ldots) = \prod_s \mathcal{L}(N_{s}, \{\text{ev}_{j,s}\} \vert \{\phi_i\}, B_s, \Omega_{\rm src}) \times \prod_s \pi(B_s) \times \pi(\Omega_{\rm src}) \times \pi(\{\phi_i\})$$
+
+We can eventually integrate over all nuisance parameters to get the marginalised posterior:
+
+$$P_{\rm marg}(\{\phi_i\}) = \idotsint P(\{\phi_i\}, \{B_s\}, \Omega_{\rm src} \vert \ldots) {\rm d}\Omega_{\rm src} \prod_s {\rm d}B_s$$
+
+From that, one may trivially extract flux upper limits, best-fit, contour plots...
+
+## Bayes factors
+
+Another feature of Bayesian analyses is the possibility to extract Bayes factor that plays the role of significance/p-values in frequentist approaches. In this case, we do not care about the extraction of upper limits but simply want to compare different models and see which one the data may favour.
+
+Let's consider two hypotheses:
+* $H_0$: there is only background ($N_{\rm sig,s} = 0$ for all $s$)
+* $H_1$: there is both background and signal contributions with $F(E) = \phi (E/{\rm GeV})^{-\Gamma}$
+
+We may then compute the related Bayes evidence starting from the posterior probability:
+* For $H_0$, we just need to integrate over nuisance parameters as no source is involved
+$$E_0 = \idotsint P(\{B_s\} \vert \ldots) \prod_s {\rm d}B_s$$
+* For $H_1$, we need to integrate over all possible source parameters
+$$E_1 =  \idotsint P(\phi, \{B_s\}, \Omega_{\rm src} \vert \ldots) {\rm d}\Omega_{\rm src} \prod_s {\rm d}B_s {\rm d}\phi$$
+
+The Bayes factor is then naively defined as:
+$$B^{\rm naive}_{10} = E_1 / E_0$$
+
+However, when using noninformative priors on source parameters (such as flat ones $\pi(\phi) = 1/C$ for $0 \leq \phi < C$), the Bayes factor is defined up to a constant. Let's spell the simple cut-and-count approach with one sample, $N=0$, $A=\int A_{\rm eff,s}(E,\Omega_{\rm src}) E^{-\Gamma} {\rm d}E$, fixed background $B$, and fixed source position:
+$$B^{\rm naive}_{10} = \dfrac{\int\textrm{Poisson}(0, B + \phi A(\Omega_{\rm src})) \times \pi(\phi) {\rm d}\phi}{\textrm{Poisson}(0, B)} = (1/C) \times \int_0^{C} e^{-\phi A(\Omega_{\rm src})} {\rm d}\phi = \dfrac{1-e^{-C A(\Omega_{\rm src})}}{C A(\Omega_{\rm src}}$$
+
+Several approaches are available to correct for this. One of those is the usage of Arithmetic Intrinsic Bayes Factor (AIBF) where we use minimal training samples that cannot discriminate between the two models to compute a correction:
+$$B^{\rm AI}_{10}^{\rm data} = B^{\rm naive}_{10}^{\rm data} \times (B^{\rm naive}_{10}^{\text{minimal set}})^{-1}$$
 
 
 # Installation
