@@ -51,7 +51,7 @@ Different source types may be considered, but the two already implemented are:
 * fixed equatorial coordinates
 Generally, these are represented by a prior $\pi(\Omega_{\rm src})$ (that is trivial for the second case).
 
-## Likielihood for one given sample
+## Likelihood for one given sample
 
 The likelihood may be defined for two different cases:
 * if we want to perform a simple cut&count search (cc), the likelihood will simply be a Poisson term
@@ -106,7 +106,7 @@ $$B^{\rm naive}_{10} = \dfrac{\int\textrm{Poisson}(0, B + \phi A(\Omega_{\rm src
 
 Several approaches are available to correct for this. One of those is the usage of Arithmetic Intrinsic Bayes Factor (AIBF) where we use minimal training samples that cannot discriminate between the two models to compute a correction:
 
-$$B^{\rm AI}_{10}^{\rm data} = B^{\rm naive}_{10}^{\rm data} \times (B^{\rm naive}_{10}^{\text{minimal set}})^{-1}$$
+$$B^{\rm AI}_{10}({\rm data}) = B^{\rm naive}_{10}({\rm data}) \times (B^{\rm naive}_{10}(\text{minimal set}))^{-1}$$
 
 ## Implementation
 
