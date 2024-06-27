@@ -101,10 +101,27 @@ The Bayes factor is then naively defined as:
 $$B^{\rm naive}_{10} = E_1 / E_0$$
 
 However, when using noninformative priors on source parameters (such as flat ones $\pi(\phi) = 1/C$ for $0 \leq \phi < C$), the Bayes factor is defined up to a constant. Let's spell the simple cut-and-count approach with one sample, $N=0$, $A=\int A_{\rm eff,s}(E,\Omega_{\rm src}) E^{-\Gamma} {\rm d}E$, fixed background $B$, and fixed source position:
-$$B^{\rm naive}_{10} = \dfrac{\int\textrm{Poisson}(0, B + \phi A(\Omega_{\rm src})) \times \pi(\phi) {\rm d}\phi}{\textrm{Poisson}(0, B)} = (1/C) \times \int_0^{C} e^{-\phi A(\Omega_{\rm src})} {\rm d}\phi = \dfrac{1-e^{-C A(\Omega_{\rm src})}}{C A(\Omega_{\rm src}}$$
+
+$$B^{\rm naive}_{10} = \dfrac{\int\textrm{Poisson}(0, B + \phi A(\Omega_{\rm src})) \times \pi(\phi) {\rm d}\phi}{\textrm{Poisson}(0, B)} = (1/C) \times \int_0^{C} e^{-\phi A(\Omega_{\rm src})} {\rm d}\phi = \dfrac{1-e^{-C A(\Omega_{\rm src})}}{C A(\Omega_{\rm src})}$$
 
 Several approaches are available to correct for this. One of those is the usage of Arithmetic Intrinsic Bayes Factor (AIBF) where we use minimal training samples that cannot discriminate between the two models to compute a correction:
+
 $$B^{\rm AI}_{10}^{\rm data} = B^{\rm naive}_{10}^{\rm data} \times (B^{\rm naive}_{10}^{\text{minimal set}})^{-1}$$
+
+## Implementation
+
+The basic need for the implementation of the Bayesian analysis is to be able to sample the posterior distribution. With this, if is then possible to:
+* marginalise over nuisance parameters to get the marginalised posterior and compute constraints on flux parameters
+* derive also constrained on other source parameters such as the total energy emitted in neutrinos assuming isotropic emission
+* marginalise over nuisance+source parameters to get the evidence of a model and compute Bayes factors when comparing two models
+
+The sampling of the posterior distribution is performed using nested sampling with ``ultranest``: https://doi.org/10.21105/joss.03001. The implementation of the likelihoods and priors are implemented in ``src/momenta/stats/model.py``.
+
+Step-by-step usage is described in the following section.
+
+## Use cases
+
+
 
 
 # Installation
@@ -123,11 +140,15 @@ from jang.io import Parameters
 pars = Parameters("examples/parameter_files/path_to_yaml_file")
 ```
 
-* Select the neutrino spectrum and jet model:
+* Select the neutrino spectrum and eventually jet model:
 ```python
-pars.set_models("x**-2", jang.utils.conversions.JetIsotropic())
+import jang.utils.flux
+import jang.utils.conversions
+flux = jang.utils.flux.FluxFixedPowerLaw(1, 1e6, 2, eref=1)
+jet = jang.utils.conversions.JetVonMises(np.deg2rad(10))
+pars.set_models(flux, jet=jet)
 ```
-(the list of available jet models is available in ``jang/conversions.py``)
+(the list of available jet models is available in ``src/momenta/utils/conversions.py``)
 
 ## Detector information
    
@@ -138,23 +159,20 @@ from jang.io import NuDetector
 det = NuDetector(path_to_yaml_file)
 ```
 
-* Acceptances have to be defined for the spectrum to consider:
-   * if they already exist in npy or ndarray format (one for each sample), they can directly be loaded:
-   ```python
-   det.set_acceptances(npy_path_or_ndarray, spectrum="x**-2")
-   ```
-
-   * otherwise, it can be estimated using an object of a class derived from EffectiveAreaBase, as illustrated for Super-Kamiokande in ``examples/superkamiokande.py``
+* Effective areas have to be defined for each neutrino sample. You can find basic classes in ``src/momenta/io/neutrinos`` and implementation examples in ``examples/``
+```python
+det.set_effective_areas([effarea1, effarea2, ...])
+```
 
 * Any observation can be set with the following commands, where the two arguments are arrays with one entry per sample:
 ```python
 from jang.io.neutrinos import BackgroundFixed
-# different background models are available: BackgroundFixed(b0), BackgroundGaussian(b0, deltab), BackgroundPoisson(Noff, Nregionsoff)
+# different background models are available: BackgroundFixed(b0), BackgroundGaussian(b0, deltab), BackgroundPoisson(Noff, alphaoffon)
 bkg = [BackgroundFixed(0.51), BackgroundFixed(0.12)]
 det.set_observations(n_observed=[0,0], background=bkg)
 ```
 
-## GW information
+## Source information
 
 * GW database can be easily imported using an existing csv file (see e.g., ``examples/input_files/gw_catalogs/database_example.csv``):
 ```python
@@ -162,55 +180,39 @@ from jang.io import GWDatabase
 database_gw = GWDatabase(path_to_csv)
 ```
 
-* An event can be extracted from it:
+* A GW event can be extracted from it:
 ```python
 gw = database_gw.find_gw(name_of_gw, pars)
 ```
 
-* Alternatively, one may specify directly the files for a given event
+* For point sources, one may use:
 ```python
-from jang.io import GW
-gw = GW(name, path_to_fits_files, path_to_hdf5_file)
+from jang.io.transient import PointSource
+ps = PointSource(ra_deg=123.45, dec_deg=67.89, name="srcABC")
 ```
 
-## Compute limits
+## Obtain results
 
-* Limit on the incoming neutrino flux (where the last optional argument is the local path -without extension- where the posterior could be saved in npy format):
+* Run the nested sampling algorithm:
 ```python
-import jang.analysis.limits as limits
-limits.get_limit_flux(det, gw, pars, path_to_file)
+from jang.stats.run import run_ultranest
+model, result = run_ultranest(det, gw, pars)
 ```
 
-* Same for the total energy emitted in neutrinos:
+* Look to posterior samples:
 ```python
-limits.get_limit_etot(det, gw, pars, path_to_file)
+print("Available parameters:", model.param_names)
+print("Samples:", result["samples"])
 ```
 
-* Same for the ratio fnu=E(tot)/E(rad,GW):
+* Obtain X% upper limits:
 ```python
-limits.get_limit_fnu(det, gw, pars, path_to_file)
-```
-
-## Results database
-   
-* Create/open the database:
-``` python
-import jang.io.ResDatabase
-database_res = ResDatabase(path_to_csv)
-```
-
-* Add new entries in the database:
-```python
-database_res.add_entry(det, gw, pars, limit_flux, limit_etot, limit_fnu, path_to_flux, path_to_etot, path_to_fnu)
-```
-
-* Save the database:
-```python
-database_res.save()
+limits = get_limits(result["samples"], model)
+print("Limit on the flux normalisation of the first component", limits["flux0_norm"])
 ```
 
 # Full examples
 
 Some full examples are available in `examples/`:
 * `superkamiokande.py` provides a full example using Super-Kamiokande public effective areas from [Zenodo](https://zenodo.org/records/4724823) and expected background rates from [Astrophys.J. 918 (2021) 2, 78](https://doi.org/10.3847/1538-4357/ac0d5a).
-* `full_example.ipynb` provides a step-by-step example to get Super-Kamiokande/ANTARES sensitivities and perform a combination. The ANTARES acceptance are rough estimates from [JCAP 04 (2023) 004](https://arxiv.org//abs/2302.07723).
+* `full_example.ipynb` provides a step-by-step example to get sensitivities and perform a combination of different detectors.

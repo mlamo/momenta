@@ -7,14 +7,13 @@ The provided values in this example are all dummy, except for the effective area
 
 import astropy.time
 import h5py
-import os
 from scipy.interpolate import RegularGridInterpolator
 
-import jang.utils.conversions
 import jang.utils.flux as flux
-import jang.stats.mcmc as mcmc
-from jang.io import GWDatabase, NuDetector, Parameters, ResDatabase
+from jang.io import GWDatabase, NuDetector, Parameters
 from jang.io.neutrinos import EffectiveAreaAltitudeDep, BackgroundFixed
+from jang.stats.run import run
+from jang.stats.limits import get_limits
 
 
 class EffectiveAreaSK(EffectiveAreaAltitudeDep):
@@ -31,9 +30,8 @@ class EffectiveAreaSK(EffectiveAreaAltitudeDep):
         self.func = RegularGridInterpolator((bins_logenergy, bins_altitude), aeff, bounds_error=False, fill_value=0)
 
 
-def single_event(gwname: str, gwdbfile: str, det_results: dict, pars: Parameters, dbfile: str = None):
+def single_event(gwname: str, gwdbfile: str, det_results: dict, pars: Parameters):
     """Compute the limits for a given GW event and using the detector results stored in dictionary.
-    If dbfile is provided, the obtained results are stored in a database at this path.
 
     The `det_results` dictionary should contain the following keys:
         - nobs: list of observed number of events (length = 4 [number of samples])
@@ -43,7 +41,6 @@ def single_event(gwname: str, gwdbfile: str, det_results: dict, pars: Parameters
 
     database_gw = GWDatabase(gwdbfile)
     database_gw.set_parameters(pars)
-    database_res = ResDatabase(dbfile)
 
     sk = NuDetector("examples/input_files/detector_superk.yaml")
     gw = database_gw.find_gw(gwname)
@@ -52,16 +49,15 @@ def single_event(gwname: str, gwdbfile: str, det_results: dict, pars: Parameters
     bkg = [BackgroundFixed(b) for b in det_results["nbkg"]]
     sk.set_observations(det_results["nobs"], bkg)
 
-    limits = mcmc.get_limits(sk, gw, pars, method="multinest")
-    database_res.add_entry(sk, gw, pars, limits["phi0"], limits["etot"], limits["fnu"])
-    if dbfile is not None:
-        database_res.save()
+    model, result = run(sk, gw, pars, method="ultranest")
+    limits = get_limits(result["samples"], model, CL=0.90)
+    print("90% upper limit on flux normalisation:", limits["flux0_norm"])
 
 
 if __name__ == "__main__":
 
     parameters = Parameters("examples/input_files/config.yaml")
-    parameters.set_models(flux.FluxFixedPowerLaw(0.1, 1e6, 2), jang.utils.conversions.JetIsotropic())
+    parameters.set_models(flux=flux.FluxFixedPowerLaw(0.1, 1e6, 2))
     parameters.nside = 8
 
     gwdb = "examples/input_files/gw_catalogs/database_example.csv"
