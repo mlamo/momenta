@@ -5,6 +5,55 @@
 [![tests](https://github.com/mlamo/jang/actions/workflows/tests.yml/badge.svg)](https://github.com/mlamo/jang/actions/workflows/tests.yml)
 [![codecov](https://codecov.io/gh/mlamo/jang/branch/main/graph/badge.svg?token=PVBSZ9P7TR)](https://codecov.io/gh/mlamo/jang)
 
+# Method
+
+This framework is using a Bayesian approach to convert observations from neutrino telescopes to constraints on the neutrino emission from transient astrophysical sources. It is aimed to combine observations from several neutrino samples into a signle set of constraints.
+
+## Inputs
+
+The input ingredients from neutrino side are:
+* number of observed events in each neutrino sample → $$N_{s}$$
+* number of expected background events in each neutrino sample (see below) → $$B_{s}$$
+* detector effective area as a function of neutrino energy and direction → $$A_{\rm eff,s}(E,\Omega)$$
+* OPTIONAL: list of observed events with their time, direction, and energy → events$$_{s}$$
+* OPTIONAL: other instrumental response functions such as angular and energy pdf for signal and background hypotheses → $$S_{\rm ang,s}$$, $$B_{\rm ang,s}$$, $$S_{\rm ene,s}$$, $$B_{\rm ene,s}$$
+
+The inputs from transient source are:
+* localisation of the source (see below) → $$\Omega_{\rm src}$$
+* OPTIONAL: time of the event
+* OPTIONAL: other information that may be relevant for astrophysical interpretations (lunimosity distance, redshift...)
+
+Other general inputs:
+* assumed neutrino energy spectrum which may include several components → $$F(E) = \sum_{i=1}^{N_c} \phi_i \times f_i(E)$$
+* priors on the flux normalisation → $$\pi(\phi_i)$$ (can be uniform in linear/log scale, etc...)
+* OPTIONAL: assumed jet structure
+
+### Expected background
+
+The expected background will be incorporated as a prior in the analysis. Three scenarii are implemented:
+* fixed background: $$\pi(B_s \vert B_{s,0}) = \delta(B_s - B_{s,0})$$ → user should provide $$B_{s,0}$$
+* Gaussian background: $$\pi(B_s \vert B_{s,0}, \sigma_{B_s}) = \textrm{Gaus}(B_s; \mu=B_{s,0}, \sigma=\sigma_{B_s})$$ → user should provide mean $$B_{s,0}$$ and error $$\sigma_{B_s}$$
+* background from ON/OFF measurement: $$\pi(B_s \vert N^{\rm off}_s, \alpha^{\rm OFF/ON}_s) = \textrm{Poisson}(N_{\rm OFF}; B_{s} \times \alpha^{\rm OFF/ON}_s)$$
+
+The backgrounds in the different samples are assumed to be uncorrelated.
+
+### Additional uncertainties
+
+Additional uncertainties on the effective area may be incorporated as prior. For simplification, this term will be neglected in the following.
+
+### Source localisation
+
+Different source types may be considered, but the two already implemented are:
+* using GW posterior samples describing the localisation of the source
+* fixed equatorial coordinates
+Generally, these are represented by a prior $$\pi(\Omega_{\rm src})$$ (that is trivial for the second case).
+
+## Posterior probability
+
+Generally, we define the posterior probability as the product of the contribution of the different neutrino samples and all the priors:
+$$P(\{phi_i\}, \{B_s\}, \Omega_{\rm src}, \ldots) = \prod_s \mathcal{L}(N_{s}, \text{events}_{s} \vert \{phi_i\}, B_s, \Omega_{\rm src}) \times \prod_s \pi(B_s) \times \pi(\Omega_{\rm src}) \times \pi(\{\phi_i\})$$
+
+
 # Installation
 
 * Clone the repository: ``git clone https://github.com/mlamo/jang.git``
