@@ -3,47 +3,47 @@ import numpy as np
 import tempfile
 import unittest
 
-from jang.io import Parameters, GWDatabase
-import jang.utils.conversions
-import jang.stats
+from momenta.io import Parameters, GWDatabase
+import momenta.utils.conversions
+import momenta.stats
 
 
 class TestJetModels(unittest.TestCase):
     def test_isotropic(self):
-        jet = jang.utils.conversions.JetIsotropic()
+        jet = momenta.utils.conversions.JetIsotropic()
         jet.etot_to_eiso(0)
         print(jet, jet.str_filename)
 
     def test_vonmises(self):
-        jet = jang.utils.conversions.JetVonMises(np.inf)
+        jet = momenta.utils.conversions.JetVonMises(np.inf)
         jet.etot_to_eiso(0)
         jet.etot_to_eiso(0.5)
         print(jet, jet.str_filename)
-        jet = jang.utils.conversions.JetVonMises(0.1)
+        jet = momenta.utils.conversions.JetVonMises(0.1)
         jet.etot_to_eiso(0)
         jet.etot_to_eiso(0.5)
         print(jet, jet.str_filename)
-        jet = jang.utils.conversions.JetVonMises(0.1, with_counter=True)
+        jet = momenta.utils.conversions.JetVonMises(0.1, with_counter=True)
         jet.etot_to_eiso(0)
         jet.etot_to_eiso(0.5)
         print(jet, jet.str_filename)
 
     def test_rectangular(self):
-        jet = jang.utils.conversions.JetRectangular(np.inf)
+        jet = momenta.utils.conversions.JetRectangular(np.inf)
         jet.etot_to_eiso(0)
         jet.etot_to_eiso(0.5)
         print(jet, jet.str_filename)
-        jet = jang.utils.conversions.JetRectangular(0.1)
+        jet = momenta.utils.conversions.JetRectangular(0.1)
         jet.etot_to_eiso(0)
         jet.etot_to_eiso(0.5)
         print(jet, jet.str_filename)
-        jet = jang.utils.conversions.JetRectangular(0.1, with_counter=True)
+        jet = momenta.utils.conversions.JetRectangular(0.1, with_counter=True)
         jet.etot_to_eiso(0)
         jet.etot_to_eiso(0.5)
         print(jet, jet.str_filename)
 
     def test_list(self):
-        jang.utils.conversions.list_jet_models()
+        momenta.utils.conversions.list_jet_models()
 
 
 class TestGW(unittest.TestCase):

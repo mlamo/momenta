@@ -3,10 +3,9 @@ import contextlib
 import logging
 import os
 
-from jang.io import NuDetectorBase, Transient, Parameters
-from jang.stats.model import ModelEmcee, ModelNested
+from momenta.io import NuDetectorBase, Transient, Parameters
+from momenta.stats.model import ModelNested
 
-import emcee
 from pymultinest.solve import solve as multinest_solve
 import ultranest
 
@@ -74,16 +73,3 @@ def run_ultranest(detector: NuDetectorBase, src: Transient, parameters: Paramete
         'points' : {k: v for k, v in zip(model.param_names, result["weighted_samples"]["points"].transpose()) if k.startswith("flux") or k=="itoy"}
     }
     return model, result
-
-
-def run(detector: NuDetectorBase, src: Transient, parameters: Parameters, method: str):
-    
-    if method == "emcee":
-        return run_emcee(detector, src, parameters)
-    elif method == "multinest":
-        return run_multinest(detector, src, parameters)
-    elif method == "ultranest":
-        return run_ultranest(detector, src, parameters)
-    
-    
-

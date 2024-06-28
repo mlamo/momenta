@@ -6,13 +6,13 @@ import time
 
 from collections import defaultdict
 
-from jang.io import GW, NuDetector, Parameters
-from jang.io.neutrinos import BackgroundGaussian, BackgroundPoisson, EffectiveAreaAllSky
-from jang.stats.run import run
-from jang.stats.limits import get_limits, get_limits_with_uncertainties
-from jang.stats.bayes_factor import compute_log_bayes_factor_tobkg
-import jang.utils.conversions
-import jang.utils.flux as flux
+from momenta.io import GW, NuDetector, Parameters
+from momenta.io.neutrinos import BackgroundGaussian, BackgroundPoisson, EffectiveAreaAllSky
+from momenta.stats.run import run_ultranest
+from momenta.stats.limits import get_limits, get_limits_with_uncertainties
+from momenta.stats.bayes_factor import compute_log_bayes_factor_tobkg
+import momenta.utils.conversions
+import momenta.utils.flux as flux
 
 matplotlib.use("Agg")
 
@@ -49,53 +49,50 @@ def test_onesample(src, parameters):
     N = 20
     parameters.apply_det_systematics = False
     parameters.prior_normalisation = "flat-linear"
-    for method in ("emcee", "multinest", "ultranest", ):
-        for _ in range(N):
-            t0 = time.time()
-            model, result = run(det, src, parameters, method)
-            if "weighted_samples" in result:
-                limits = get_limits_with_uncertainties(result["weighted_samples"], model)["flux0_norm"]
-                limit, unc = limits[0], limits[1]
-            else:
-                limit = get_limits(result["samples"], model)["flux0_norm"]
-                unc = np.nan
-            results[f"{method}_flatlin"].append(limit)
-            uncertainties[f"{method}_flatlin"].append(unc)
-            times[f"{method}_flatlin"] += time.time() - t0
+    for _ in range(N):
+        t0 = time.time()
+        model, result = run_ultranest(det, src, parameters)
+        if "weighted_samples" in result:
+            limits = get_limits_with_uncertainties(result["weighted_samples"], model)["flux0_norm"]
+            limit, unc = limits[0], limits[1]
+        else:
+            limit = get_limits(result["samples"], model)["flux0_norm"]
+            unc = np.nan
+        results["flatlin"].append(limit)
+        uncertainties["flatlin"].append(unc)
+        times["flatlin"] += time.time() - t0
 
     N = 20
     parameters.apply_det_systematics = False
     parameters.prior_normalisation = "flat-log"
-    for method in ("emcee", "multinest", "ultranest", ):
-        for _ in range(N):
-            t0 = time.time()
-            model, result = run(det, src, parameters, method)
-            if "weighted_samples" in result:
-                limits = get_limits_with_uncertainties(result["weighted_samples"], model)["flux0_norm"]
-                limit, unc = limits[0], limits[1]
-            else:
-                limit = get_limits(result["samples"], model)["flux0_norm"]
-                unc = np.nan
-            results[f"{method}_flatlog"].append(limit)
-            uncertainties[f"{method}_flatlog"].append(unc)
-            times[f"{method}_flatlog"] += time.time() - t0
+    for _ in range(N):
+        t0 = time.time()
+        model, result = run_ultranest(det, src, parameters)
+        if "weighted_samples" in result:
+            limits = get_limits_with_uncertainties(result["weighted_samples"], model)["flux0_norm"]
+            limit, unc = limits[0], limits[1]
+        else:
+            limit = get_limits(result["samples"], model)["flux0_norm"]
+            unc = np.nan
+        results["flatlog"].append(limit)
+        uncertainties["flatlog"].append(unc)
+        times["flatlog"] += time.time() - t0
             
     N = 20
     parameters.apply_det_systematics = False
     parameters.prior_normalisation = "jeffreys-pois"
-    for method in ("emcee", "multinest", "ultranest", ):
-        for _ in range(N):
-            t0 = time.time()
-            model, result = run(det, src, parameters, method)
-            if "weighted_samples" in result:
-                limits = get_limits_with_uncertainties(result["weighted_samples"], model)["flux0_norm"]
-                limit, unc = limits[0], limits[1]
-            else:
-                limit = get_limits(result["samples"], model)["flux0_norm"]
-                unc = np.nan
-            results[f"{method}_jeffreyspois"].append(limit)
-            uncertainties[f"{method}_jeffreyspois"].append(unc)
-            times[f"{method}_jeffreyspois"] += time.time() - t0
+    for _ in range(N):
+        t0 = time.time()
+        model, result = run_ultranest(det, src, parameters)
+        if "weighted_samples" in result:
+            limits = get_limits_with_uncertainties(result["weighted_samples"], model)["flux0_norm"]
+            limit, unc = limits[0], limits[1]
+        else:
+            limit = get_limits(result["samples"], model)["flux0_norm"]
+            unc = np.nan
+        results["jeffreyspois"].append(limit)
+        uncertainties["jeffreyspois"].append(unc)
+        times["jeffreyspois"] += time.time() - t0
             
     # compute naive upper limits
     nside = 8
@@ -139,7 +136,7 @@ def test_bayesfactor(src, parameters):
         for j in range(N2.shape[1]):
             det.samples[0].nobserved = N1[i,j]
             det.samples[1].nobserved = N2[i,j]
-            _, result = run(det, src, parameters, method="ultranest")
+            _, result = run_ultranest(det, src, parameters)
             bf[i, j] = compute_log_bayes_factor_tobkg(result, det, src, parameters)
             print(N1[i,j], N2[i,j], bf[i,j])
     
@@ -168,7 +165,7 @@ if __name__ == "__main__":
         f.write(config_str)
     
     parameters = Parameters(config_file)
-    parameters.set_models(flux.FluxFixedPowerLaw(1, 1e6, 2, eref=1), jang.utils.conversions.JetVonMises(np.deg2rad(10)))
+    parameters.set_models(flux.FluxFixedPowerLaw(1, 1e6, 2, eref=1), momenta.utils.conversions.JetVonMises(np.deg2rad(10)))
     gw = GW(
             name="GW190412", 
             path_to_fits="examples/input_files/gw_catalogs/GW190412/GW190412_PublicationSamples.fits", 
@@ -176,5 +173,5 @@ if __name__ == "__main__":
     )
     gw.set_parameters(parameters)
     
-    # test_onesample(gw, parameters)
-    test_bayesfactor(gw, parameters)
+    test_onesample(gw, parameters)
+    # test_bayesfactor(gw, parameters)

@@ -28,7 +28,7 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=150 --statistics
     - name: Collect coverage
       run: |
-        pytest --cov=jang/ --cov-report=xml tests/*.py
+        pytest --cov=momenta/ --cov-report=xml tests/*.py
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v3
   

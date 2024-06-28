@@ -3,12 +3,12 @@ import unittest
 import healpy as hp
 import numpy as np
 
-import jang.utils.conversions
-import jang.utils.flux
-from jang.io import GWDatabase, NuDetector, Parameters
-from jang.io.neutrinos import BackgroundGaussian, EffectiveAreaBase
-from jang.stats.limits import get_limits, get_limits_with_uncertainties
-from jang.stats.run import run
+import momenta.utils.conversions
+import momenta.utils.flux
+from momenta.io import GWDatabase, NuDetector, Parameters
+from momenta.io.neutrinos import BackgroundGaussian, EffectiveAreaBase
+from momenta.stats.limits import get_limits, get_limits_with_uncertainties
+from momenta.stats.run import run
 
 
 class EffectiveArea(EffectiveAreaBase):
@@ -55,7 +55,7 @@ class TestExamples(unittest.TestCase):
 
         # configuration
         self.pars = Parameters(self.config_file)
-        self.pars.set_models(jang.utils.flux.FluxFixedPowerLaw(1, 100, 2), jang.utils.conversions.JetIsotropic())
+        self.pars.set_models(momenta.utils.flux.FluxFixedPowerLaw(1, 100, 2), momenta.utils.conversions.JetIsotropic())
         # GW database
         database_gw = GWDatabase(self.gwdb_file)
         database_gw.set_parameters(self.pars)

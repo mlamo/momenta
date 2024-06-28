@@ -9,11 +9,11 @@ import astropy.time
 import h5py
 from scipy.interpolate import RegularGridInterpolator
 
-import jang.utils.flux as flux
-from jang.io import GWDatabase, NuDetector, Parameters
-from jang.io.neutrinos import EffectiveAreaAltitudeDep, BackgroundFixed
-from jang.stats.run import run
-from jang.stats.limits import get_limits
+import momenta.utils.flux as flux
+from momenta.io import GWDatabase, NuDetector, Parameters
+from momenta.io.neutrinos import EffectiveAreaAltitudeDep, BackgroundFixed
+from momenta.stats.run import run_ultranest
+from momenta.stats.limits import get_limits
 
 
 class EffectiveAreaSK(EffectiveAreaAltitudeDep):
@@ -49,7 +49,7 @@ def single_event(gwname: str, gwdbfile: str, det_results: dict, pars: Parameters
     bkg = [BackgroundFixed(b) for b in det_results["nbkg"]]
     sk.set_observations(det_results["nobs"], bkg)
 
-    model, result = run(sk, gw, pars, method="ultranest")
+    model, result = run_ultranest(sk, gw, pars)
     limits = get_limits(result["samples"], model, CL=0.90)
     print("90% upper limit on flux normalisation:", limits["flux0_norm"])
 

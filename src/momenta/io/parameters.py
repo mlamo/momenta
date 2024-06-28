@@ -5,8 +5,8 @@ import os
 import yaml
 from typing import Optional
 
-from jang.utils.flux import FluxBase
-from jang.utils.conversions import JetModelBase
+from momenta.utils.flux import FluxBase
+from momenta.utils.conversions import JetModelBase
 
 
 class Parameters:

@@ -9,7 +9,7 @@ class DisableLogger:
         logging.disable(logging.NOTSET)
 
 
-log = logging.getLogger("jang")
+log = logging.getLogger("momenta")
 log.setLevel(logging.DEBUG)
 logger_ch = logging.StreamHandler()
 logger_ch.setLevel(logging.DEBUG)

@@ -11,14 +11,14 @@ import os
 import pandas as pd
 from typing import Optional, Tuple
 
-import jang.utils.conversions
-from jang.io.transient import Transient
+import momenta.utils.conversions
+from momenta.io.transient import Transient
 
 
 class GW(Transient):
     """Class to handle a full GW event, including FITS file (with skymap) and HDF5 file (with full posterior samples)."""
     
-    def __init__(self, path_to_fits: str = None, path_to_samples: str = None, name: str = None, logger: str = "jang"):
+    def __init__(self, path_to_fits: str = None, path_to_samples: str = None, name: str = None, logger: str = "momenta"):
         super().__init__(name=name, logger=logger)
         self.fits = None
         self.samples = None
@@ -41,7 +41,7 @@ class GW(Transient):
         self.samples.priorities = self.samples_priorities
         self.log.info("[GW] Samples are loaded from the file %s", os.path.basename(file))
 
-    def set_parameters(self, pars: 'jang.io.Parameters'):
+    def set_parameters(self, pars: 'momenta.io.Parameters'):
         """Define the relevant parameters (to be propagated)."""
         self.samples_priorities = pars.gw_posteriorsamples_priorities
         if self.samples is not None:
@@ -53,7 +53,7 @@ class GW(Transient):
                 self.log.error("[GW] Preparing toys using posterior samples require to call set_parameters() first.")
             self.samples.priorities = self.samples_priorities
             toys = pd.DataFrame(self.samples.prepare_toys(nside))
-            toys["distance_scaling"] = jang.utils.conversions.distance_scaling(toys.pop("luminosity_distance").to_numpy(), toys.pop("redshift").to_numpy())
+            toys["distance_scaling"] = momenta.utils.conversions.distance_scaling(toys.pop("luminosity_distance").to_numpy(), toys.pop("redshift").to_numpy())
             return toys
         if self.fits:
            return pd.DataFrame(data=self.fits.prepare_toys(nside))
@@ -209,17 +209,17 @@ class GWDatabase:
         self.db = db
         self.name = name
         if filepath is not None and db is not None:
-            logging.getLogger("jang").warning("[GWDatabase] Will use the database and ignore the input filepath.")
+            logging.getLogger("momenta").warning("[GWDatabase] Will use the database and ignore the input filepath.")
         elif filepath is not None:
             if not os.path.isfile(filepath):
-                logging.getLogger("jang").warning("[GWDatabase] Input files does not exist, starting from empty database.")
+                logging.getLogger("momenta").warning("[GWDatabase] Input files does not exist, starting from empty database.")
             else:
                 self.db = pd.read_csv(filepath, index_col=0)
             if self.name is None:
                 self.name = os.path.splitext(os.path.basename(filepath))[0]
         self.samples_priorities = None
 
-    def set_parameters(self, pars: 'jang.io.Parameters'):
+    def set_parameters(self, pars: 'momenta.io.Parameters'):
         """Define the relevant parameters (to be propagated)."""
         self.samples_priorities = pars.gw_posteriorsamples_priorities
 

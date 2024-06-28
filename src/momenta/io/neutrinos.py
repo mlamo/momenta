@@ -19,7 +19,7 @@ import astropy.coordinates
 import astropy.time
 from astropy.units import deg
 
-import jang.stats.pdfs as pdf
+import momenta.stats.pdfs as pdf
 
 
 warnings.filterwarnings("ignore", category=scipy.integrate.IntegrationWarning)
@@ -176,11 +176,6 @@ class Background(abc.ABC):
     def __repr__(self):
         pass
     
-    @abc.abstractmethod
-    def logpdf(self):
-        """Function used by emcee."""
-        pass
-    
     def prior_transform(self):
         """Function used by multinest"""
         pass
@@ -200,9 +195,6 @@ class BackgroundFixed(Background):
     def __repr__(self):
         return f"{self.b0:.2e}"
     
-    def logpdf(self, x):
-        return np.where(x == self.b0, 0, -np.inf)
-    
     def prior_transform(self, x):
         return self.b0
 
@@ -221,9 +213,6 @@ class BackgroundGaussian(Background):
     def __repr__(self):
         return f"{self.b0:.2e} +/- {self.error_b:.2e}"
     
-    def logpdf(self, x):
-        return truncnorm.logpdf(x, -self.b0 / self.error_b, np.inf, loc=self.b0, scale=self.error_b)
-    
     def prior_transform(self, x):
         return truncnorm.ppf(x, -self.b0 / self.error_b, np.inf, loc=self.b0, scale=self.error_b)
 
@@ -241,9 +230,6 @@ class BackgroundPoisson(Background):
 
     def __repr__(self):
         return f"{self.nominal:.2e} = {self.Noff:d}/{self.alpha_offon:d}"
-    
-    def logpdf(self, x):
-        return gamma.logpdf(x, self.Noff + 1, scale=1 / self.alpha_offon)
     
     def prior_transform(self, x):
         return gamma.ppf(x, self.Noff + 1, scale=1 / self.alpha_offon)
@@ -378,7 +364,7 @@ class NuDetector(NuDetectorBase):
         - JSON file (format defined in the examples folder
         - dictionary object (with same format as JSON).
         """
-        log = logging.getLogger("jang")
+        log = logging.getLogger("momenta")
 
         if isinstance(rinput, str):  # pragma: no cover
             assert os.path.isfile(rinput)
@@ -434,7 +420,7 @@ class SuperNuDetector(NuDetectorBase):
         return sum([det.nsamples for det in self.detectors])
 
     def add_detector(self, det: NuDetector):
-        log = logging.getLogger("jang")
+        log = logging.getLogger("momenta")
         if det.name in [d.name for d in self.detectors]:
             log.error(
                 "[SuperDetector] Detector with same name %s is already loaded in the SuperDetector. Skipped.",

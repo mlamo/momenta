@@ -4,10 +4,10 @@ import numpy as np
 from collections import defaultdict
 from ultranest.integrator import resample_equal
 
-from jang.io import NuDetectorBase, Transient, Parameters
-from jang.stats.model import calculate_deterministics
-from jang.stats.run import run
-from jang.utils.flux import FluxFixedPowerLaw
+from momenta.io import NuDetectorBase, Transient, Parameters
+from momenta.stats.model import calculate_deterministics
+from momenta.stats.run import run_ultranest
+from momenta.utils.flux import FluxFixedPowerLaw
 
 
 def upperlimit_from_sample(sample: np.ndarray, CL: float = 0.90) -> float:
@@ -78,6 +78,6 @@ def compute_differential_limits(detector: NuDetectorBase, src: Transient, parame
     pars = copy.deepcopy(parameters)
     for ll, ul in zip(bins_energy[:-1], bins_energy[1:]):
         pars.flux = FluxFixedPowerLaw(ll, ul, spectral_index)
-        model, result = run(detector, src, pars, method="ultranest")
+        model, result = run_ultranest(detector, src, pars)
         limits.append(get_limits(result["samples"], model)["flux0_norm"])
     return limits

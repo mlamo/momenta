@@ -3,9 +3,9 @@ import logging
 import numpy as np
 import ultranest
 
-from jang.io import NuDetectorBase, Parameters, Transient
-from jang.io.neutrinos import BackgroundPoisson
-from jang.stats.model import ModelNested, ModelNested_BkgOnly
+from momenta.io import NuDetectorBase, Parameters, Transient
+from momenta.io.neutrinos import BackgroundPoisson
+from momenta.stats.model import ModelNested, ModelNested_BkgOnly
 
 
 def build_minimal_experiment(detector: NuDetectorBase):
@@ -32,7 +32,7 @@ def compute_correction_tobkg(detector: NuDetectorBase, src: Transient, parameter
     
     detector0 = build_minimal_experiment(detector)
     if detector0 is None:
-        logging.getLogger("jang").warning("Cannot correct Bayes factor as one of the samples has non-Poisson background.")
+        logging.getLogger("momenta").warning("Cannot correct Bayes factor as one of the samples has non-Poisson background.")
         if return_error:
             return 0, 0
         return 0

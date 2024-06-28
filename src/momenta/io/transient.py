@@ -4,14 +4,17 @@ import astropy.time
 import astropy.units as u
 import healpy as hp
 import logging
+import numpy as np
 import pandas as pd
 
-import jang.utils.conversions
+from scipy.stats import vonmises
+
+import momenta.utils.conversions
 
 
 class Transient:
     
-    def __init__(self, name: str = None, utc: astropy.time.Time|None = None, logger: str = "jang"):
+    def __init__(self, name: str = None, utc: astropy.time.Time|None = None, logger: str = "momenta"):
         self.name = name
         self.utc = utc
         self.logger = logger
@@ -27,7 +30,7 @@ class Transient:
     
 class PointSource(Transient):
     
-    def __init__(self, ra_deg: float, dec_deg: float, err_deg: float, name: str = None, utc: astropy.time.Time|None = None, logger: str = "jang"):
+    def __init__(self, ra_deg: float, dec_deg: float, err_deg: float, name: str = None, utc: astropy.time.Time|None = None, logger: str = "momenta"):
         super().__init__(name, utc, logger)
         self.coords = astropy.coordinates.SkyCoord(ra=ra_deg*u.deg, dec=dec_deg*u.deg, frame="icrs")
         self.err = err_deg * u.deg
@@ -36,10 +39,10 @@ class PointSource(Transient):
         
     def set_distance(self, distance):
         self.distance = distance
-        self.redshift = jang.utils.conversions.lumidistance_to_redshift(distance)
+        self.redshift = momenta.utils.conversions.lumidistance_to_redshift(distance)
         
     def set_redshift(self, redshift):
-        self.distance = jang.utils.conversions.redshift_to_lumidistance(redshift)
+        self.distance = momenta.utils.conversions.redshift_to_lumidistance(redshift)
         self.redshift = redshift
         
     def prepare_prior_samples(self, nside: int) -> pd.DataFrame:
@@ -48,8 +51,14 @@ class PointSource(Transient):
             toys["ra"] = [self.coords.ra.deg]
             toys["dec"] = [self.coords.dec.deg]
             if self.distance:
-                toys["distance_scaling"] = [jang.utils.conversions.distance_scaling(self.distance, self.redshift)]
+                toys["distance_scaling"] = [momenta.utils.conversions.distance_scaling(self.distance, self.redshift)]
         else:
-            raise RuntimeError("Not implemented yet")
+            kappa = 1 / (self.err.to(u.rad).value)**2
+            theta = vonmises.rvs(kappa, size=10000)
+            phi = np.random.uniform(0, 2*np.pi, size=10000)
+            dra = np.arcsin(np.sin(theta)*np.cos(phi))
+            ddec = np.arcsin(np.sin(theta)*np.sin(phi))
+            toys["ra"] = self.coords.ra.deg + np.rad2deg(dra)
+            toys["dec"] = self.coords.dec.deg + np.rad2deg(ddec)
         toys["ipix"] = hp.ang2pix(nside, toys["ra"], toys["dec"], lonlat=True)
         return pd.DataFrame(data=toys)

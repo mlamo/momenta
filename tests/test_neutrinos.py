@@ -1,7 +1,7 @@
 import numpy as np
 import unittest
 
-from jang.io.neutrinos import (
+from momenta.io.neutrinos import (
     infer_uncertainties,
     BackgroundFixed,
     BackgroundGaussian,
@@ -11,8 +11,8 @@ from jang.io.neutrinos import (
     NuSample,
     SuperNuDetector,
 )
-import jang.stats.pdfs as pdf
-import jang.utils.flux as flux
+import momenta.stats.pdfs as pdf
+import momenta.utils.flux as flux
 
 
 class EnergySignal(pdf.EnergySignal):
