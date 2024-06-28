@@ -102,7 +102,7 @@ class ModelNested:
             i += self.nsamples
         if self.acc_variations:
             rvs = norm.ppf(x[i:i+self.nsamples])
-            x[i:i+self.nsamples] = np.identity(self.nsamples) + np.dot(self.chol_cov_acc, rvs)
+            x[i:i+self.nsamples] = np.ones(self.nsamples) + np.dot(self.chol_cov_acc, rvs)
         return x
         
     def loglike(self, cube):

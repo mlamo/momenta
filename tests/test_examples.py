@@ -8,7 +8,7 @@ import momenta.utils.flux
 from momenta.io import GWDatabase, NuDetector, Parameters
 from momenta.io.neutrinos import BackgroundGaussian, EffectiveAreaBase
 from momenta.stats.limits import get_limits, get_limits_with_uncertainties
-from momenta.stats.run import run
+from momenta.stats.run import run_ultranest
 
 
 class EffectiveArea(EffectiveAreaBase):
@@ -69,20 +69,14 @@ class TestExamples(unittest.TestCase):
     def test_limits_nosyst(self):
         self.pars.apply_det_systematics = False
         self.pars.likelihood_method = "poisson"
-        for method in ("emcee", "multinest", "ultranest"):
-            model, results = run(self.det, self.gw, self.pars, method=method)
-            print("nosyst", get_limits(results["samples"], model))
+        model, results = run_ultranest(self.det, self.gw, self.pars)
 
     def test_limits_wsyst(self):
         self.pars.apply_det_systematics = True
         self.pars.likelihood_method = "poisson"
-        for method in ("emcee", "multinest", "ultranest"):
-            model, results = run(self.det, self.gw, self.pars, method=method)
-            print("wsyst", get_limits(results["samples"], model))
+        model, results = run_ultranest(self.det, self.gw, self.pars)
 
     def test_limits_pointsource(self):
         self.pars.apply_det_systematics = False
         self.pars.likelihood_method = "pointsource"
-        for method in ("emcee", "multinest", "ultranest"):
-            model, results = run(self.det, self.gw, self.pars, method=method)
-            print("pointsource", get_limits(results["samples"], model))
+        model, results = run_ultranest(self.det, self.gw, self.pars)
