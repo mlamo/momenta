@@ -1,9 +1,8 @@
 # Multi-Observations Multi-Energy Neutrino Transient Analysis
 
-![logo](https://github.com/mlamo/momenta/blob/main/doc/logo.png?raw=true)
-
 [![tests](https://github.com/mlamo/momenta/actions/workflows/tests.yml/badge.svg)](https://github.com/mlamo/momenta/actions/workflows/tests.yml)
 [![codecov](https://codecov.io/gh/mlamo/momenta/branch/main/graph/badge.svg?token=PVBSZ9P7TR)](https://codecov.io/gh/mlamo/momenta)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://opensource.org/licenses/GPL-3.0)
 
 
 ## Installation
@@ -49,7 +48,6 @@ det.set_effective_areas([effarea1, effarea2, ...])
 * Any observation can be set with the following commands, where the two arguments are arrays with one entry per sample:
 ```python
 from momenta.io.neutrinos import BackgroundFixed
-# different background models are available: BackgroundFixed(b0), BackgroundGaussian(b0, deltab), BackgroundPoisson(Noff, alphaoffon)
 bkg = [BackgroundFixed(0.51), BackgroundFixed(0.12)]
 det.set_observations(n_observed=[0,0], background=bkg)
 ```
