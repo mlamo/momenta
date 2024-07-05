@@ -1,9 +1,25 @@
-"""Example to handle Super-Kamiokande specific format.
-
-In this case, the input from Super-K are simply the number of events (observed and expected),
-as well as the detector effective area in the format of 2D histograms with x=log10(energy [in GeV]) and y=zenith angle [in rad].
-The provided values in this example are all dummy, except for the effective area that is the one published in https://doi.org/10.5281/zenodo.4724822.
 """
+    Example to handle Super-Kamiokande specific format.
+    The effective areas are the ones published in https://doi.org/10.5281/zenodo.4724822.
+    The expected background is extracted from https://doi.org/10.3847/1538-4357/ac0d5a.
+    The observed number of events is arbitrarily fixed to 0 (real values for O3a GW events in  https://doi.org/10.3847/1538-4357/ac0d5a).
+
+    Copyright (C) 2024  Mathieu Lamoureux
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
 
 import astropy.time
 import h5py

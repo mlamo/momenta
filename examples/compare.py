@@ -1,5 +1,21 @@
+"""
+    Copyright (C) 2024  Mathieu Lamoureux
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
 import matplotlib
-import matplotlib.pyplot as plt
 import numpy as np
 import tempfile
 import time
@@ -138,14 +154,7 @@ def test_bayesfactor(src, parameters):
             det.samples[1].nobserved = N2[i,j]
             _, result = run_ultranest(det, src, parameters)
             bf[i, j] = compute_log_bayes_factor_tobkg(result, det, src, parameters)
-            print(N1[i,j], N2[i,j], bf[i,j])
-    
-    np.savetxt("test.csv", bf)
-    
-    plt.pcolormesh(N1, N2, bf, shading="nearest", cmap="Greens")
-    plt.xlabel("Number of observed events in sample 1")
-    plt.ylabel("Number of observed events in sample 2")
-    plt.savefig("test.png")
+            print(f"N1={N1[i,j]}, N2={N2[i,j]}, BF={bf[i,j]}")
 
 
 if __name__ == "__main__":

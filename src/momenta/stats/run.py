@@ -1,3 +1,20 @@
+"""
+    Copyright (C) 2024  Mathieu Lamoureux
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
 import numpy as np
 import contextlib
 import logging
@@ -32,21 +49,6 @@ def redirect_stdout(dest_filename):
         os.dup2(old[0], 1)
         os.dup2(old[1], 2)
         dest_file.close()
-    
-    
-def run_emcee(detector: NuDetectorBase, src: Transient, parameters: Parameters):
-    
-    model = ModelEmcee(detector, src, parameters)
-
-    nwalkers = 32
-    sampler = emcee.EnsembleSampler(nwalkers, model.ndims, model.log_prob)
-    state = sampler.run_mcmc(model.get_starting_points(nwalkers), 5000)
-    sampler.reset()
-    sampler.run_mcmc(state, 20000)
-    
-    result = {}
-    result["samples"] = {k: v for k, v in zip(model.param_names, sampler.get_chain(flat=True).transpose())}    
-    return model, result
 
 
 def run_multinest(detector: NuDetectorBase, src: Transient, parameters: Parameters):
@@ -60,16 +62,13 @@ def run_multinest(detector: NuDetectorBase, src: Transient, parameters: Paramete
     return model, result
 
 
-def run_ultranest(detector: NuDetectorBase, src: Transient, parameters: Parameters):
+def run_ultranest(detector: NuDetectorBase, src: Transient, parameters: Parameters, precision_dlogz: float = 0.3):
     
     model = ModelNested(detector, src, parameters)
     
     sampler = ultranest.ReactiveNestedSampler(model.param_names, model.loglike, model.prior)
-    result = sampler.run(show_status=False, viz_callback=False)
+    result = sampler.run(show_status=False, viz_callback=False, dlogz=precision_dlogz)
     
     result["samples"] = {k: v for k, v in zip(model.param_names, result["samples"].transpose()) if k.startswith("flux") or k=="itoy"}
-    result["weighted_samples"] = {
-        'weights': result["weighted_samples"]['bootstrapped_weights'].transpose(),
-        'points' : {k: v for k, v in zip(model.param_names, result["weighted_samples"]["points"].transpose()) if k.startswith("flux") or k=="itoy"}
-    }
+    result["weighted_samples"]["points"] = {k: v for k, v in zip(model.param_names, result["weighted_samples"]["points"].transpose()) if k.startswith("flux") or k=="itoy"}
     return model, result
