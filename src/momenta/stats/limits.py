@@ -19,6 +19,7 @@ import copy
 import numpy as np
 
 from collections import defaultdict
+from scipy.stats import gaussian_kde
 from ultranest.integrator import resample_equal
 
 from momenta.io import NuDetectorBase, Transient, Parameters
@@ -98,3 +99,41 @@ def compute_differential_limits(detector: NuDetectorBase, src: Transient, parame
         model, result = run_ultranest(detector, src, pars)
         limits.append(get_limits(result["samples"], model)["flux0_norm"])
     return limits
+
+
+def build_hpd(sample: np.ndarray, CL: float = 0.90, xmin: float = 0, xmax: float = None):
+    
+    # getting PDF using KDE
+    if xmin is None:
+        xmin = np.min(sample)
+    if xmax is None:
+        xmax = np.max(sample)
+    f = gaussian_kde(sample)
+    x = np.linspace(xmin, xmax, 20000)
+    y = f.evaluate(x)
+    y /= np.sum(y)
+    
+    # getting all values in the HPD range
+    isort = np.flipud(np.argsort(y))
+    cumsum = 0
+    idx_hpd = []
+    for i, _y in zip(isort, y[isort]):
+        cumsum += _y
+        idx_hpd.append(i)
+        if cumsum >= CL:
+            break
+    idx_hpd.sort()
+    
+    # getting HPD intervals
+    modes = []
+    ilow = idx_hpd[0]
+    iprev = idx_hpd[0]
+    for i in idx_hpd:
+        if i > iprev + 1:
+            modes.append([ilow, iprev])
+            ilow = i
+        iprev = i
+    modes.append([ilow, idx_hpd[-1]])
+    
+    modes = x[np.array(modes)]
+    return modes
