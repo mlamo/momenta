@@ -96,6 +96,26 @@ class FixedPowerLaw(Component):
         return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy/self.eref, -self.spectral_index), 0)
 
 
+class BrokenPowerLaw(Component):
+    
+    def __init__(self, emin, emax, eref=1):
+        super().__init__(emin=emin, emax=emax, store_acceptance=False)
+        self.shape_names = ["gamma", "log(ebreak)"]
+        self.shape_defaults = [2, np.log(1e6)]
+        self.shape_values = self.shape_defaults
+        self.shape_boundaries = [(1, 3), [5, 7]]
+        self.eref = eref
+        
+    def evaluate(self, energy):
+        factor = (np.exp(self.shape_values[1])/self.eref)**(self.shape_values[0] - 2.58)
+        logE = np.log(energy)
+        f = np.where(logE<self.shape_values[1], np.power(np.exp(logE)/self.eref, -2.58), factor*np.power(np.exp(logE)/self.eref, -spectral_index))
+        return np.where((self.emin <= energy) & (energy <= self.emax), f, 0)
+    
+    def prior_transform(self, x):
+        return self.shape_boundaries[0][0] + (self.shape_boundaries[0][1] - self.shape_boundaries[0][0]) * x
+
+
 class FluxBase(abc.ABC):
     
     def __init__(self):
@@ -170,3 +190,9 @@ class FluxFixedDoublePowerLaw(FluxBase):
             FixedPowerLaw(emin, emax, spectral_indices[0], eref),
             FixedPowerLaw(emin, emax, spectral_indices[1], eref),
         ]
+
+
+class FluxBrokenPowerLaw(FluxBase):
+    def __init__(self, emin, emax, eref=1):
+        super().__init__()
+        self.components = [BrokenPowerLaw(emin, emax, eref)]
