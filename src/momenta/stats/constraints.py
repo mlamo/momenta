@@ -38,9 +38,9 @@ def upperlimit_from_sample(sample: np.ndarray, CL: float = 0.90) -> float:
     Returns:
         float: upper limit
     """
-    
+
     x = np.array(sample).flatten()
-    return np.percentile(x, 100*CL)
+    return np.percentile(x, 100 * CL)
 
 
 def get_limits(samples: dict, model, CL: float = 0.90) -> dict[str, float]:
@@ -54,12 +54,12 @@ def get_limits(samples: dict, model, CL: float = 0.90) -> dict[str, float]:
     Returns:
         dict[str, float]: dictionary of upper limits
     """
-    
+
     samples.update(calculate_deterministics(samples, model))
-    
+
     limits = {}
     for n, s in samples.items():
-        limits[n] = upperlimit_from_sample(s, CL)    
+        limits[n] = upperlimit_from_sample(s, CL)
     return limits
 
 
@@ -74,16 +74,16 @@ def get_limits_with_uncertainties(weighted_samples: dict, model, CL: float = 0.9
     Returns:
         dict[str, tuple[float]]: dictionary of upper limits with estimated error
     """
-    
+
     limits = defaultdict(list)
-    for weights in weighted_samples['bootstrapped_weights'].transpose():
+    for weights in weighted_samples["bootstrapped_weights"].transpose():
         samples = {}
-        for n, p in weighted_samples['points'].items():
+        for n, p in weighted_samples["points"].items():
             samples[n] = resample_equal(p, weights)
         l = get_limits(samples, model, CL)
         for n in l.keys():
             limits[n].append(l[n])
-    
+
     res = {}
     for n in limits.keys():
         res[n] = (np.average(limits[n]), np.std(limits[n]))
@@ -91,7 +91,7 @@ def get_limits_with_uncertainties(weighted_samples: dict, model, CL: float = 0.9
 
 
 def compute_differential_limits(detector: NuDetectorBase, src: Transient, parameters: Parameters, bins_energy: np.ndarray, spectral_index: float = 1):
-    
+
     limits = []
     pars = copy.deepcopy(parameters)
     for ll, ul in zip(bins_energy[:-1], bins_energy[1:]):
@@ -102,7 +102,7 @@ def compute_differential_limits(detector: NuDetectorBase, src: Transient, parame
 
 
 def get_bestfit(sample: np.ndarray, xmin: float = 0, xmax: float = None):
-    
+
     # getting PDF using KDE
     if xmin is None:
         xmin = np.min(sample)
@@ -111,12 +111,12 @@ def get_bestfit(sample: np.ndarray, xmin: float = 0, xmax: float = None):
     f = gaussian_kde(sample)
     x = np.linspace(xmin, xmax, 20000)
     y = f.evaluate(x)
-    
+
     return x[np.argmax(y)]
-    
+
 
 def get_hpd_interval(sample: np.ndarray, CL: float = 0.90, xmin: float = 0, xmax: float = None):
-    
+
     # getting PDF using KDE
     if xmin is None:
         xmin = np.min(sample)
@@ -126,7 +126,7 @@ def get_hpd_interval(sample: np.ndarray, CL: float = 0.90, xmin: float = 0, xmax
     x = np.linspace(xmin, xmax, 20000)
     y = f.evaluate(x)
     y /= np.sum(y)
-    
+
     # getting all values in the HPD range
     isort = np.flipud(np.argsort(y))
     cumsum = 0
@@ -137,7 +137,7 @@ def get_hpd_interval(sample: np.ndarray, CL: float = 0.90, xmin: float = 0, xmax
         if cumsum >= CL:
             break
     idx_hpd.sort()
-    
+
     # getting HPD intervals
     modes = []
     ilow = idx_hpd[0]
@@ -148,6 +148,6 @@ def get_hpd_interval(sample: np.ndarray, CL: float = 0.90, xmin: float = 0, xmax
             ilow = i
         iprev = i
     modes.append([ilow, idx_hpd[-1]])
-    
+
     modes = x[np.array(modes)]
     return modes

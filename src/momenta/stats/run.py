@@ -41,7 +41,7 @@ def redirect_stdout(dest_filename):
     """
     try:
         old = os.dup(1), os.dup(2)
-        dest_file = open(dest_filename, 'w')
+        dest_file = open(dest_filename, "w")
         os.dup2(dest_file.fileno(), 1)
         os.dup2(dest_file.fileno(), 1)
         yield
@@ -52,23 +52,25 @@ def redirect_stdout(dest_filename):
 
 
 def run_multinest(detector: NuDetectorBase, src: Transient, parameters: Parameters):
-    
+
     model = ModelNested(detector, src, parameters)
-    
+
     with redirect_stdout(os.devnull):
         result = multinest_solve(LogLikelihood=model.loglike, Prior=model.prior, n_dims=model.ndims, verbose=False, sampling_efficiency=0.1)
-    
-    result["samples"] = {k: v for k, v in zip(model.param_names, result["samples"].transpose()) if k.startswith("flux") or k=="itoy"}
+
+    result["samples"] = {k: v for k, v in zip(model.param_names, result["samples"].transpose()) if k.startswith("flux") or k == "itoy"}
     return model, result
 
 
 def run_ultranest(detector: NuDetectorBase, src: Transient, parameters: Parameters, precision_dlogz: float = 0.3):
-    
+
     model = ModelNested(detector, src, parameters)
-    
+
     sampler = ultranest.ReactiveNestedSampler(model.param_names, model.loglike, model.prior)
     result = sampler.run(show_status=False, viz_callback=False, dlogz=precision_dlogz)
-    
-    result["samples"] = {k: v for k, v in zip(model.param_names, result["samples"].transpose()) if k.startswith("flux") or k=="itoy"}
-    result["weighted_samples"]["points"] = {k: v for k, v in zip(model.param_names, result["weighted_samples"]["points"].transpose()) if k.startswith("flux") or k=="itoy"}
+
+    result["samples"] = {k: v for k, v in zip(model.param_names, result["samples"].transpose()) if k.startswith("flux") or k == "itoy"}
+    result["weighted_samples"]["points"] = {
+        k: v for k, v in zip(model.param_names, result["weighted_samples"]["points"].transpose()) if k.startswith("flux") or k == "itoy"
+    }
     return model, result

@@ -32,7 +32,7 @@ from momenta.io.transient import Transient
 
 class GW(Transient):
     """Class to handle a full GW event, including FITS file (with skymap) and HDF5 file (with full posterior samples)."""
-    
+
     def __init__(self, path_to_fits: str = None, path_to_samples: str = None, name: str = None, logger: str = "momenta"):
         super().__init__(name=name, logger=logger)
         self.fits = None
@@ -43,7 +43,7 @@ class GW(Transient):
             self.set_fits(path_to_fits)
         if path_to_samples is not None:
             self.set_samples(path_to_samples)
-         
+
     def set_fits(self, file: str):
         """Set GWFits object."""
         self.fits = _GWFits(file)
@@ -56,7 +56,7 @@ class GW(Transient):
         self.samples.priorities = self.samples_priorities
         self.log.info("[GW] Samples are loaded from the file %s", os.path.basename(file))
 
-    def set_parameters(self, pars: 'momenta.io.Parameters'):
+    def set_parameters(self, pars: "momenta.io.Parameters"):
         """Define the relevant parameters (to be propagated)."""
         self.samples_priorities = pars.gw_posteriorsamples_priorities
         if self.samples is not None:
@@ -68,17 +68,19 @@ class GW(Transient):
                 self.log.error("[GW] Preparing toys using posterior samples require to call set_parameters() first.")
             self.samples.priorities = self.samples_priorities
             toys = pd.DataFrame(self.samples.prepare_toys(nside))
-            toys["distance_scaling"] = momenta.utils.conversions.distance_scaling(toys.pop("luminosity_distance").to_numpy(), toys.pop("redshift").to_numpy())
+            toys["distance_scaling"] = momenta.utils.conversions.distance_scaling(
+                toys.pop("luminosity_distance").to_numpy(), toys.pop("redshift").to_numpy()
+            )
             return toys
         if self.fits:
-           return pd.DataFrame(data=self.fits.prepare_toys(nside))
+            return pd.DataFrame(data=self.fits.prepare_toys(nside))
         self.log.warning("[GW] No toys are generated as this GW event has no FITS file nor posterior samples.")
         return pd.DataFrame()
 
 
 class _GWFits:
     """Internal class to handle GW FITS files."""
-    
+
     def __init__(self, file):
         assert os.path.isfile(file)
         self.file = file
@@ -128,7 +130,7 @@ class _GWFits:
 
 class _GWSamples:
     """Internal class to handle GW posterior samples."""
-    
+
     def __init__(self, file):
         assert os.path.isfile(file)
         self.file = file
@@ -170,7 +172,7 @@ class _GWSamples:
             if var not in variables_h5:
                 if (var + "_non_evolved") in variables_h5:
                     variables_corrected.append(var + "_non_evolved")
-                else: 
+                else:
                     raise RuntimeError(f"Missing variable {var} in h5 file.")
             else:
                 variables_corrected.append(var)
@@ -234,7 +236,7 @@ class GWDatabase:
                 self.name = os.path.splitext(os.path.basename(filepath))[0]
         self.samples_priorities = None
 
-    def set_parameters(self, pars: 'momenta.io.Parameters'):
+    def set_parameters(self, pars: "momenta.io.Parameters"):
         """Define the relevant parameters (to be propagated)."""
         self.samples_priorities = pars.gw_posteriorsamples_priorities
 

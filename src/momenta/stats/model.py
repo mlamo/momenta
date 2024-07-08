@@ -24,9 +24,9 @@ from momenta.utils.conversions import solarmass_to_erg
 
 def calculate_deterministics(samples, model):
     """Calculate different deterministic quantities:
-        - eiso: total energy emitted in neutrinos assuming isotropic emission [in erg]
-        - etot: total energy emitted in neutrinos assuming model=parameters.jet and using `theta_jn` as jet orientation w.r.t. Earth [in erg]
-        - fnu: ratio between total energy in neutrinos `etot` and radiated energy in GW using `radiated_energy` [no units]
+    - eiso: total energy emitted in neutrinos assuming isotropic emission [in erg]
+    - etot: total energy emitted in neutrinos assuming model=parameters.jet and using `theta_jn` as jet orientation w.r.t. Earth [in erg]
+    - fnu: ratio between total energy in neutrinos `etot` and radiated energy in GW using `radiated_energy` [no units]
     """
     det = {}
     # Stop here if distance is not provided
@@ -40,8 +40,8 @@ def calculate_deterministics(samples, model):
         shapes = np.array([samples[f"flux{i}_{s}"] for i, c in enumerate(model.flux.components) for s in c.shape_names])
         det["eiso"] = np.empty(nsamples)
         for isample in range(nsamples):
-            model.flux.set_shapes(shapes[:,isample])
-            det["eiso"][isample] = np.sum(norms * model.flux.flux_to_eiso(distance_scaling[isample]))        
+            model.flux.set_shapes(shapes[:, isample])
+            det["eiso"][isample] = np.sum(norms * model.flux.flux_to_eiso(distance_scaling[isample]))
     else:
         det["eiso"] = np.sum(norms + model.flux.flux_to_eiso(distance_scaling), axis=0)
     if "radiated_energy" in model.toys_src.columns:
@@ -59,7 +59,7 @@ def calculate_deterministics(samples, model):
 
 
 class ModelNested:
-    
+
     def __init__(self, detector: NuDetectorBase, src: Transient, parameters: Parameters):
         self.nobs = np.array([s.nobserved for s in detector.samples])
         self.bkg = np.array([s.background for s in detector.samples])
@@ -68,7 +68,7 @@ class ModelNested:
         self.acc_variations = parameters.apply_det_systematics and np.any(detector.error_acceptance != 0)
         if self.acc_variations:
             self.chol_cov_acc = np.linalg.cholesky(detector.error_acceptance + 1e-5 * np.identity(self.nsamples))
-        self.detector= detector
+        self.detector = detector
         self.parameters = parameters
         self.flux = parameters.flux
         self.toys_src = src.prepare_prior_samples(parameters.nside)
@@ -84,7 +84,7 @@ class ModelNested:
         if self.acc_variations:
             nd += self.nsamples  # acceptance
         return nd
-    
+
     @property
     def param_names(self):
         params = [f"flux{i}_norm" for i in range(self.flux.ncomponents)]
@@ -95,76 +95,81 @@ class ModelNested:
         if self.acc_variations:
             params += [f"facc{i}" for i in range(self.nsamples)]  # acceptance
         return params
-    
+
     def prior_norm(self, cube):
         if self.fluxnorm_prior == "flat-linear":
             return self.fluxnorm_range[0] + (self.fluxnorm_range[1] - self.fluxnorm_range[0]) * cube
         elif self.fluxnorm_prior == "flat-log":
             return np.power(10, np.log10(self.fluxnorm_range[0]) + (np.log10(self.fluxnorm_range[1]) - np.log10(self.fluxnorm_range[0])) * cube)
         elif self.fluxnorm_prior == "jeffreys-pois":
-            return self.fluxnorm_range[1] * np.power(cube/2, 2)
-    
+            return self.fluxnorm_range[1] * np.power(cube / 2, 2)
+
     def prior(self, cube):
         x = cube.copy()
         i = 0
-        x[i:i+self.flux.ncomponents] = self.prior_norm(x[i:i+self.flux.ncomponents])
+        x[i : i + self.flux.ncomponents] = self.prior_norm(x[i : i + self.flux.ncomponents])
         i += self.flux.ncomponents
-        x[i:i+self.flux.nshapes] = self.flux.prior_transform(x[i:i+self.flux.nshapes])
+        x[i : i + self.flux.nshapes] = self.flux.prior_transform(x[i : i + self.flux.nshapes])
         i += self.flux.nshapes
         x[i] = np.floor(self.ntoys_src * x[i])
         i += 1
         if self.bkg_variations:
             for j in range(self.nsamples):
-                x[i+j] = self.bkg[j].prior_transform(x[i+j])
+                x[i + j] = self.bkg[j].prior_transform(x[i + j])
             i += self.nsamples
         if self.acc_variations:
-            rvs = norm.ppf(x[i:i+self.nsamples])
-            x[i:i+self.nsamples] = np.ones(self.nsamples) + np.dot(self.chol_cov_acc, rvs)
+            rvs = norm.ppf(x[i : i + self.nsamples])
+            x[i : i + self.nsamples] = np.ones(self.nsamples) + np.dot(self.chol_cov_acc, rvs)
         return x
-        
+
     def loglike(self, cube):
         # Format input parameters
         i = 0
-        norms = cube[i:i+self.flux.ncomponents]
+        norms = cube[i : i + self.flux.ncomponents]
         i += self.flux.ncomponents
-        shapes = cube[i:i+self.flux.nshapes]
+        shapes = cube[i : i + self.flux.nshapes]
         i += self.flux.nshapes
         itoy = int(np.floor(cube[i]))
         i += 1
         if self.bkg_variations:
-            nbkg = cube[i:i+self.nsamples]
+            nbkg = cube[i : i + self.nsamples]
             i += self.nsamples
         else:
             nbkg = [b.nominal for b in self.bkg]
         if self.acc_variations:
-            facc = cube[i:i+self.nsamples]
+            facc = cube[i : i + self.nsamples]
         else:
             facc = 1
         # Get acceptance
         if self.flux.nshapes > 0:
             self.flux.set_shapes(shapes)
         toy = self.toys_src.iloc[itoy]
-        acc = np.array([[s.effective_area.get_acceptance(c, int(toy["ipix"]), self.parameters.nside) for s in self.detector.samples] for c in self.flux.components])
+        acc = np.array(
+            [
+                [s.effective_area.get_acceptance(c, int(toy["ipix"]), self.parameters.nside) for s in self.detector.samples]
+                for c in self.flux.components
+            ]
+        )
         # Compute log-likelihood
-        nsigs = facc * np.array(norms)[:,np.newaxis] * acc/6
+        nsigs = facc * np.array(norms)[:, np.newaxis] * acc / 6
         loglkl = np.sum(poisson.logpmf(self.nobs, nbkg + np.sum(nsigs, axis=0)))
         if self.parameters.likelihood_method == "pointsource":
             for i, s in enumerate(self.detector.samples):
                 if s.events is None:
                     continue
                 for ev in s.events:
-                    loglkl += np.log(s.compute_event_probability(nsigs[:,i], nbkg[i], ev, toy["ra"], toy["dec"], self.flux))
+                    loglkl += np.log(s.compute_event_probability(nsigs[:, i], nbkg[i], ev, toy["ra"], toy["dec"], self.flux))
         return loglkl
 
 
 class ModelNested_BkgOnly:
-    
+
     def __init__(self, detector: NuDetectorBase, parameters: Parameters):
         self.nobs = np.array([s.nobserved for s in detector.samples])
         self.bkg = np.array([s.background for s in detector.samples])
         self.nsamples = detector.nsamples
         self.bkg_variations = parameters.apply_det_systematics
-        self.detector= detector
+        self.detector = detector
         self.parameters = parameters
 
     @property
@@ -173,21 +178,21 @@ class ModelNested_BkgOnly:
         if self.bkg_variations:
             nd += self.nsamples  # background
         return nd
-    
+
     @property
     def param_names(self):
         params = []
         if self.bkg_variations:
             params += [f"bkg{i}" for i in range(self.nsamples)]  # background
         return params
-    
+
     def prior(self, cube):
         x = cube.copy()
         if self.bkg_variations:
             for j in range(self.nsamples):
                 x[j] = self.bkg[j].prior_transform(x[j])
         return x
-        
+
     def loglike(self, cube):
         # Format input parameters
         if self.bkg_variations:

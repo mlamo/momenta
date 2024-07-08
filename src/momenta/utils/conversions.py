@@ -24,7 +24,7 @@ from astropy.constants import M_sun, c
 
 
 second_to_day = 1 / 86400
-solarmass_to_erg = (M_sun*c**2).to(u.erg)
+solarmass_to_erg = (M_sun * c**2).to(u.erg)
 
 
 class JetModelBase(metaclass=abc.ABCMeta):
@@ -110,19 +110,19 @@ def list_jet_models() -> list[JetModelBase]:
 
 def redshift_to_lumidistance(redshift: float):
     return (redshift * acu.redshift).to(u.Mpc, acu.redshift_distance(kind="luminosity"))
-    
+
 
 def lumidistance_to_redshift(distance: float):
     return (distance * u.Mpc).to(acu.redshift, acu.redshift_distance(kind="luminosity"))
 
 
-def distance_scaling(distance: float, redshift: float|None = None):
+def distance_scaling(distance: float, redshift: float | None = None):
     """Returns the factor to scale from flux [/GeV/cm^2] to isotropic energy [erg]"""
     f = 4 * np.pi
-    f *= ((distance*u.Mpc).to(u.cm).value)**2  # distance in cm
+    f *= ((distance * u.Mpc).to(u.cm).value) ** 2  # distance in cm
     if redshift is not None:
-        f *= 1 / (1+redshift)
+        f *= 1 / (1 + redshift)
     else:
-        f *= 1 / (1+lumidistance_to_redshift(distance))
-    f *= (1*u.GeV).to(u.erg).value  # energy in erg
+        f *= 1 / (1 + lumidistance_to_redshift(distance))
+    f *= (1 * u.GeV).to(u.erg).value  # energy in erg
     return f
