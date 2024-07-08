@@ -29,7 +29,7 @@ import momenta.utils.flux as flux
 from momenta.io import GWDatabase, NuDetector, Parameters
 from momenta.io.neutrinos import EffectiveAreaAltitudeDep, BackgroundFixed
 from momenta.stats.run import run_ultranest
-from momenta.stats.limits import get_limits
+from momenta.stats.constraints import get_limits
 
 
 class EffectiveAreaSK(EffectiveAreaAltitudeDep):

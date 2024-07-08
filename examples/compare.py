@@ -25,7 +25,7 @@ from collections import defaultdict
 from momenta.io import GW, NuDetector, Parameters
 from momenta.io.neutrinos import BackgroundGaussian, BackgroundPoisson, EffectiveAreaAllSky
 from momenta.stats.run import run_ultranest
-from momenta.stats.limits import get_limits, get_limits_with_uncertainties
+from momenta.stats.constraints import get_limits, get_limits_with_uncertainties
 from momenta.stats.bayes_factor import compute_log_bayes_factor_tobkg
 import momenta.utils.conversions
 import momenta.utils.flux as flux

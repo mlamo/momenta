@@ -7,7 +7,7 @@ import momenta.utils.conversions
 import momenta.utils.flux
 from momenta.io import GWDatabase, NuDetector, Parameters
 from momenta.io.neutrinos import BackgroundGaussian, EffectiveAreaBase
-from momenta.stats.limits import get_limits, get_limits_with_uncertainties
+from momenta.stats.constraints import get_limits, get_limits_with_uncertainties
 from momenta.stats.run import run_ultranest
 
 

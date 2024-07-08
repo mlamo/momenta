@@ -101,7 +101,21 @@ def compute_differential_limits(detector: NuDetectorBase, src: Transient, parame
     return limits
 
 
-def build_hpd(sample: np.ndarray, CL: float = 0.90, xmin: float = 0, xmax: float = None):
+def get_bestfit(sample: np.ndarray, xmin: float = 0, xmax: float = None):
+    
+    # getting PDF using KDE
+    if xmin is None:
+        xmin = np.min(sample)
+    if xmax is None:
+        xmax = np.max(sample)
+    f = gaussian_kde(sample)
+    x = np.linspace(xmin, xmax, 20000)
+    y = f.evaluate(x)
+    
+    return x[np.argmax(y)]
+    
+
+def get_hpd_interval(sample: np.ndarray, CL: float = 0.90, xmin: float = 0, xmax: float = None):
     
     # getting PDF using KDE
     if xmin is None:
