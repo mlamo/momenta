@@ -1,5 +1,5 @@
 [project]
-name = "jang"
+name = "momenta"
 authors = [{name = "Mathieu Lamoureux"}]
 version = "1.0"
 dependencies = [

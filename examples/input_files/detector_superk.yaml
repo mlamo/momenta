@@ -1,15 +1,6 @@
 name: "Super-Kamiokande"
 
-nsamples: 3
-samples:
-  names: ["Fully-Contained", "Partially-Contained", "Upgoing muons"]
-  shortnames: ["FC", "PC", "UPMU"]
-  energyrange: [0.1, 1e5]
-
-earth_location:
-  latitude: 36.425634
-  longitude: 137.310340
-  units: deg
+samples: ["FC", "PC", "UPMU"]
 
 errors:
   acceptance: 0

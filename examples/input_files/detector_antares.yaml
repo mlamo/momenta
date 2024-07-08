@@ -1,15 +1,6 @@
 name: ANTARES
 
-nsamples: 4
-samples:
-  names: ["upgoing tracks", "downgoing tracks", "upgoing showers", "downgoing showers"]
-  shortnames: ["TracksUp", "TracksDown", "ShowersUp", "ShowersDown"]
-  energyrange: [5, 1e8]
-
-earth_location:
-  latitude: 42.800
-  longitude: 6.167
-  units: deg
+samples: ["TracksUp", "TracksDown", "ShowersUp", "ShowersDown"]
 
 errors:
   acceptance: 0.20

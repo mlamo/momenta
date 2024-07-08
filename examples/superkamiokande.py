@@ -1,52 +1,53 @@
-"""Example to handle Super-Kamiokande specific format.
+"""
+    Example to handle Super-Kamiokande specific format.
+    The effective areas are the ones published in https://doi.org/10.5281/zenodo.4724822.
+    The expected background is extracted from https://doi.org/10.3847/1538-4357/ac0d5a.
+    The observed number of events is arbitrarily fixed to 0 (real values for O3a GW events in  https://doi.org/10.3847/1538-4357/ac0d5a).
 
-In this case, the input from Super-K are simply the number of events (observed and expected),
-as well as the detector effective area in the format of 2D histograms with x=log10(energy [in GeV]) and y=zenith angle [in rad].
-The provided values in this example are all dummy, except for the effective area that is the one published in https://doi.org/10.5281/zenodo.4724822.
+    Copyright (C) 2024  Mathieu Lamoureux
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-from collections.abc import Iterable
-import numpy as np
-import os
-import ROOT
-from typing import Union
 
-import jang.utils.conversions
-import jang.analysis.limits
-import jang.analysis.significance
-from jang.io import GWDatabase, NuDetector, Parameters, ResDatabase
-from jang.io.neutrinos import EffectiveAreaBase, BackgroundFixed, NuSample
+import astropy.time
+import h5py
+from scipy.interpolate import RegularGridInterpolator
 
-
-class EffectiveAreaSK(EffectiveAreaBase):
-    def __init__(self, filename: str, sample: NuSample):
-        super().__init__(sample)
-        self.filename = filename
-        self.rootfile = self.rootgraphs = None
-        self.args_evaluate = ["altitude"]
-        self.read()
-
-    def read(self):
-        assert os.path.isfile(self.filename)
-        self.rootfile = ROOT.TFile(self.filename, "r")
-        self.rootgraphs = []
-        for flav in ("nue", "nueb", "numu", "numub"):
-            gname = f"Aeff_2D_{self.sample.shortname}_{flav}"
-            if self.rootfile.GetListOfKeys().Contains(gname):
-                self.rootgraphs.append(self.rootfile.Get(gname))
-
-    def evaluate(self, energy: Union[float, Iterable], altitude: float) -> Union[float, np.ndarray]:
-        if isinstance(energy, Iterable):
-            aeff = np.zeros_like(energy)
-            for i, x in enumerate(np.log10(energy)):
-                aeff[i] = np.sum([r.Interpolate(x, np.pi / 2 - altitude) for r in self.rootgraphs])
-            return aeff
-        return np.sum([r.Interpolate(np.log10(energy), np.pi / 2 - altitude) for r in self.rootgraphs])
+import momenta.utils.flux as flux
+from momenta.io import GWDatabase, NuDetector, Parameters
+from momenta.io.neutrinos import EffectiveAreaAltitudeDep, BackgroundFixed
+from momenta.stats.run import run_ultranest
+from momenta.stats.constraints import get_limits
 
 
-def single_event(gwname: str, gwdbfile: str, det_results: dict, pars: Parameters, dbfile: str = None):
+class EffectiveAreaSK(EffectiveAreaAltitudeDep):
+    def __init__(self, filename: str, samplename: str, time: astropy.time.Time):
+        super().__init__()
+        self.read(filename, samplename)
+        self.set_location(time, 36.425634, 137.310340)
+
+    def read(self, filename: str, samplename: str):
+        with h5py.File(filename, "r") as f:
+            bins_logenergy = f["bins_logenergy"][:]
+            bins_altitude = f["bins_altitude"][:]
+            aeff = f[f"aeff_{samplename}"][:]
+        self.func = RegularGridInterpolator((bins_logenergy, bins_altitude), aeff, bounds_error=False, fill_value=0)
+
+
+def single_event(gwname: str, gwdbfile: str, det_results: dict, pars: Parameters):
     """Compute the limits for a given GW event and using the detector results stored in dictionary.
-    If dbfile is provided, the obtained results are stored in a database at this path.
 
     The `det_results` dictionary should contain the following keys:
         - nobs: list of observed number of events (length = 4 [number of samples])
@@ -56,43 +57,29 @@ def single_event(gwname: str, gwdbfile: str, det_results: dict, pars: Parameters
 
     database_gw = GWDatabase(gwdbfile)
     database_gw.set_parameters(pars)
-    database_res = ResDatabase(dbfile)
 
     sk = NuDetector("examples/input_files/detector_superk.yaml")
-    effarea_sk = [EffectiveAreaSK(filename=det_results["effarea"], sample=s) for s in sk.samples]
     gw = database_gw.find_gw(gwname)
 
-    accs = [
-        effarea.to_acceptance(sk, pars.nside, gw.jd, pars.spectrum)
-        for effarea in effarea_sk
-    ]
-    sk.set_acceptances(accs, pars.spectrum)
+    sk.set_effective_areas([EffectiveAreaSK(det_results["effarea"], s.name, gw.utc) for s in sk.samples])
     bkg = [BackgroundFixed(b) for b in det_results["nbkg"]]
     sk.set_observations(det_results["nobs"], bkg)
 
-    def pathpost(x):
-        return f"{os.path.dirname(dbfile)}/lkls/{x}_{gw.name}_{sk.name}_{pars.str_filename}" if dbfile is not None else None
-    limit_flux = jang.analysis.limits.get_limit_flux(sk, gw, pars, pathpost("flux"))
-    limit_etot = jang.analysis.limits.get_limit_etot(sk, gw, pars, pathpost("eiso"))
-    limit_fnu = jang.analysis.limits.get_limit_fnu(sk, gw, pars, pathpost("fnu"))
-
-    jang.analysis.significance.compute_prob_null_hypothesis(sk, gw, pars)
-
-    database_res.add_entry(sk, gw, pars, limit_flux, limit_etot, limit_fnu, pathpost("flux"), pathpost("eiso"), pathpost("fnu"))
-    if dbfile is not None:
-        database_res.save()
+    model, result = run_ultranest(sk, gw, pars)
+    limits = get_limits(result["samples"], model, CL=0.90)
+    print("90% upper limit on flux normalisation:", limits["flux0_norm"])
 
 
 if __name__ == "__main__":
 
     parameters = Parameters("examples/input_files/config.yaml")
-    parameters.set_models("x**-2", jang.utils.conversions.JetIsotropic())
+    parameters.set_models(flux=flux.FluxFixedPowerLaw(0.1, 1e6, 2))
     parameters.nside = 8
 
     gwdb = "examples/input_files/gw_catalogs/database_example.csv"
     detresults = {
         "nobs": [0, 0, 0],
         "nbkg": [0.112, 0.007, 0.016],
-        "effarea": "examples/input_files/effarea_superk.root",
+        "effarea": "examples/input_files/effarea_superk.h5",
     }
     single_event("GW190412", gwdb, detresults, parameters)

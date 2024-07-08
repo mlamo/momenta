@@ -1,114 +1,98 @@
-# Joint Analysis of Neutrinos and Gravitational waves
+# Multi-Observations Multi-Energy Neutrino Transient Analysis
 
-![logo](https://github.com/mlamo/jang/blob/main/doc/logo.png?raw=true)
+[![tests](https://github.com/mlamo/momenta/actions/workflows/tests.yml/badge.svg)](https://github.com/mlamo/momenta/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/gh/mlamo/momenta/branch/main/graph/badge.svg?token=PVBSZ9P7TR)](https://codecov.io/gh/mlamo/momenta)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://opensource.org/licenses/GPL-3.0)
 
-[![tests](https://github.com/mlamo/jang/actions/workflows/tests.yml/badge.svg)](https://github.com/mlamo/jang/actions/workflows/tests.yml)
-[![codecov](https://codecov.io/gh/mlamo/jang/branch/main/graph/badge.svg?token=PVBSZ9P7TR)](https://codecov.io/gh/mlamo/jang)
 
-# Installation
+## Installation
 
-* Clone the repository: ``git clone https://github.com/mlamo/jang.git``
-* Install the package: ``cd jang && pip install -e .``
+* Clone the repository: ``git clone https://github.com/mlamo/momenta.git``
+* Install the package: ``cd momenta && pip install -e .``
 
-# Step-by-step usage
+## Step-by-step usage
 
-## Parameters
+### Parameters
 
 * Create/use a YAML file with all needed parameters (example: ``examples/input_files/config.yaml``)
 * Load the parameters:
 ```python
-from jang.io import Parameters
+from momenta.io import Parameters
 pars = Parameters("examples/parameter_files/path_to_yaml_file")
 ```
 
-* Select the neutrino spectrum and jet model:
+* Select the neutrino spectrum and eventually jet model:
 ```python
-pars.set_models("x**-2", jang.utils.conversions.JetIsotropic())
+import momenta.utils.flux
+import momenta.utils.conversions
+flux = momenta.utils.flux.FluxFixedPowerLaw(1, 1e6, 2, eref=1)
+jet = momenta.utils.conversions.JetVonMises(np.deg2rad(10))
+pars.set_models(flux, jet=jet)
 ```
-(the list of available jet models is available in ``jang/conversions.py``)
+(the list of available jet models is available in ``src/momenta/utils/conversions.py``)
 
-## Detector information
+### Detector information
    
 * Create/use a YAML file with all relevant information (examples in ``examples/input_files/DETECTORNAME/detector.yaml``)
 * Create a new detector object:
 ```python
-from jang.io import NuDetector
+from momenta.io import NuDetector
 det = NuDetector(path_to_yaml_file)
 ```
 
-* Acceptances have to be defined for the spectrum to consider:
-   * if they already exist in npy or ndarray format (one for each sample), they can directly be loaded:
-   ```python
-   det.set_acceptances(npy_path_or_ndarray, spectrum="x**-2")
-   ```
-
-   * otherwise, it can be estimated using an object of a class derived from EffectiveAreaBase, as illustrated for Super-Kamiokande in ``examples/superkamiokande.py``
+* Effective areas have to be defined for each neutrino sample. You can find basic classes in ``src/momenta/io/neutrinos`` and implementation examples in ``examples/``
+```python
+det.set_effective_areas([effarea1, effarea2, ...])
+```
 
 * Any observation can be set with the following commands, where the two arguments are arrays with one entry per sample:
 ```python
-from jang.io.neutrinos import BackgroundFixed
-# different background models are available: BackgroundFixed(b0), BackgroundGaussian(b0, deltab), BackgroundPoisson(Noff, Nregionsoff)
+from momenta.io.neutrinos import BackgroundFixed
 bkg = [BackgroundFixed(0.51), BackgroundFixed(0.12)]
 det.set_observations(n_observed=[0,0], background=bkg)
 ```
 
-## GW information
+### Source information
 
 * GW database can be easily imported using an existing csv file (see e.g., ``examples/input_files/gw_catalogs/database_example.csv``):
 ```python
-from jang.io import GWDatabase
+from momenta.io import GWDatabase
 database_gw = GWDatabase(path_to_csv)
 ```
 
-* An event can be extracted from it:
+* A GW event can be extracted from it:
 ```python
 gw = database_gw.find_gw(name_of_gw, pars)
 ```
 
-* Alternatively, one may specify directly the files for a given event
+* For point sources, one may use:
 ```python
-from jang.io import GW
-gw = GW(name, path_to_fits_files, path_to_hdf5_file)
+from momenta.io.transient import PointSource
+ps = PointSource(ra_deg=123.45, dec_deg=67.89, name="srcABC")
 ```
 
-## Compute limits
+### Obtain results
 
-* Limit on the incoming neutrino flux (where the last optional argument is the local path -without extension- where the posterior could be saved in npy format):
+* Run the nested sampling algorithm:
 ```python
-import jang.analysis.limits as limits
-limits.get_limit_flux(det, gw, pars, path_to_file)
+from momenta.stats.run import run_ultranest
+model, result = run_ultranest(det, gw, pars)
 ```
 
-* Same for the total energy emitted in neutrinos:
+* Look to posterior samples:
 ```python
-limits.get_limit_etot(det, gw, pars, path_to_file)
+print("Available parameters:", model.param_names)
+print("Samples:", result["samples"])
 ```
 
-* Same for the ratio fnu=E(tot)/E(rad,GW):
+* Obtain X% upper limits:
 ```python
-limits.get_limit_fnu(det, gw, pars, path_to_file)
+limits = get_limits(result["samples"], model)
+print("Limit on the flux normalisation of the first component", limits["flux0_norm"])
 ```
 
-## Results database
-   
-* Create/open the database:
-``` python
-import jang.io.ResDatabase
-database_res = ResDatabase(path_to_csv)
-```
-
-* Add new entries in the database:
-```python
-database_res.add_entry(det, gw, pars, limit_flux, limit_etot, limit_fnu, path_to_flux, path_to_etot, path_to_fnu)
-```
-
-* Save the database:
-```python
-database_res.save()
-```
-
-# Full examples
+## Full examples
 
 Some full examples are available in `examples/`:
 * `superkamiokande.py` provides a full example using Super-Kamiokande public effective areas from [Zenodo](https://zenodo.org/records/4724823) and expected background rates from [Astrophys.J. 918 (2021) 2, 78](https://doi.org/10.3847/1538-4357/ac0d5a).
-* `full_example.ipynb` provides a step-by-step example to get Super-Kamiokande/ANTARES sensitivities and perform a combination. The ANTARES acceptance are rough estimates from [JCAP 04 (2023) 004](https://arxiv.org//abs/2302.07723).
+* `full_example.ipynb` provides a step-by-step example to get sensitivities and perform a combination of different detectors.

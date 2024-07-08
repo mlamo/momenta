@@ -8,14 +8,14 @@ test:
 	pytest tests
 
 test-cov:
-	pytest --cov src/jang --cov-report term-missing --cov-report xml:reports/coverage.xml --cov-report html:reports/coverage tests
+	pytest --cov src/momenta --cov-report term-missing --cov-report xml:reports/coverage.xml --cov-report html:reports/coverage tests
 
 .PHONY: black
 black:
-	black src/jang
+	black src/momenta
 
 .PHONY: black-check
 black-check:
-	black --check src/jang
+	black --check src/momenta
 
 .PHONY: all clean install install-dev black black-check
