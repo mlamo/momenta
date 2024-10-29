@@ -105,24 +105,14 @@ class ModelNested:
             return self.fluxnorm_range[0] + (self.fluxnorm_range[1] - self.fluxnorm_range[0]) * cube
 
     def prior(self, cube):
-        x = cube.copy()
-        i = 0
-        x[i : i + self.flux.ncomponents] = self.prior_norm(x[i : i + self.flux.ncomponents])
-        i += self.flux.ncomponents
-        x[i : i + self.flux.nshapevars] = self.flux.prior_transform(x[i : i + self.flux.nshapevars])
-        i += self.flux.nshapevars
-        x[i] = np.floor(self.ntoys_src * x[i])
-        i += 1
-        if self.bkg_variations:
-            for j in range(self.nsamples):
-                x[i + j] = self.bkg[j].prior_transform(x[i + j])
-            i += self.nsamples
-        if self.acc_variations:
-            rvs = norm.ppf(x[i : i + self.nsamples])
-            x[i : i + self.nsamples] = np.ones(self.nsamples) + np.dot(self.chol_cov_acc, rvs)
-        return x
-
-    def prior_vec(self, cube):
+        """Convert from unit hypercube to hyperparameter space following the prior distributions.
+        
+        Args:
+            cube (np.ndarray): unit cube of dimension = (N, D) where N is the number of points to evaluate and D the number of dimensions
+        
+        Returns:
+            np.ndarray: same dimension as input, but values in real parameter space
+        """
         x = cube.copy()
         i = 0
         x[..., i : i + self.flux.ncomponents] = self.prior_norm(x[..., i : i + self.flux.ncomponents])
@@ -141,56 +131,14 @@ class ModelNested:
         return x
 
     def loglike(self, cube):
-        # Format input parameters
-        i = 0
-        norms = cube[i : i + self.flux.ncomponents]
-        i += self.flux.ncomponents
-        shapes = cube[i : i + self.flux.nshapevars]
-        i += self.flux.nshapevars
-        itoy = int(np.floor(cube[i]))
-        i += 1
-        if self.bkg_variations:
-            nbkg = cube[i : i + self.nsamples]
-            i += self.nsamples
-        else:
-            nbkg = [b.nominal for b in self.bkg]
-        if self.acc_variations:
-            facc = cube[i : i + self.nsamples]
-        else:
-            facc = 1
-        # Get acceptance
-        if self.flux.nshapevars > 0:
-            self.flux.set_shapevars(shapes)
-        toy = self.toys_src[itoy]
-        acc = np.array(
-            [[s.effective_area.get_acceptance(c, toy.ipix, self.parameters.nside) for s in self.detector.samples] for c in self.flux.components]
-        )
-        # Compute log-likelihood
-        nsigs = facc * np.array(norms)[:, np.newaxis] * acc / 6  # (ncompflux, nsamples)
-        nexps = nbkg + np.sum(nsigs, axis=0)
-        if self.parameters.likelihood_method == "poisson":
-            loglkl = -np.sum(nexps + self.nobs * np.log(nexps))
-        if self.parameters.likelihood_method == "pointsource":
-            loglkl = -np.sum(nexps)
-            for i, s in enumerate(self.detector.samples):
-                if s.events is None:
-                    loglkl += self.nobs[i] * np.log(nexps[i])
-                    continue
-                for ev in s.events:
-                    pbkg = s.compute_background_probability(ev)
-                    psig = np.array([s.compute_signal_probability(ev, c, toy.ra, toy.dec) for c in self.flux.components])
-                    loglkl += np.log(nbkg[i] * pbkg + np.sum(nsigs[:, i] * psig))
-
-        # Add Jeffreys' prior
-        if self.fluxnorm_prior == "jeffreys":
-            m_acc = facc * acc / 6  # shape = (ncomps, nsamples)
-            m_nexp = nbkg + np.sum(nsigs, axis=0)  # shape = (nsamples)
-            m_fisher = np.matmul(m_acc / m_nexp, (m_acc / m_nexp).T)  # shape = (ncomps, ncomps)
-            det_fisher = np.linalg.det(m_fisher)
-            loglkl -= 0.5 * np.log(det_fisher)
-        return loglkl
-
-    def loglike_vec(self, cube):
+        """Compute the log-likelihood.
+        
+        Args:
+            cube (np.ndarray): parameter hypercube dimension = (N, D) where N is the number of points to evaluate and D the number of dimensions
+            
+        Returns:
+            np.ndarray: value of log-likelihood for the N points
+        """
         npoints = cube.shape[0]
         # INPUTS
         # > flux normalisation parameters
@@ -254,6 +202,7 @@ class ModelNested:
 
 
 class ModelNested_BkgOnly:
+    """Same model as `ModelNested` but only with the background (used for Bayes factor computation)."""
 
     def __init__(self, detector: NuDetectorBase, parameters: Parameters):
         self.nobs = np.array([s.nobserved for s in detector.samples])

@@ -23,7 +23,7 @@ import time
 from collections import defaultdict
 
 from momenta.io import GW, NuDetector, Parameters
-from momenta.io.neutrinos import BackgroundGaussian, BackgroundPoisson
+from momenta.io.neutrinos import BackgroundGaussian
 from momenta.io.neutrinos_irfs import EffectiveAreaAllSky
 from momenta.stats.run import run_ultranest
 from momenta.stats.constraints import get_limits, get_limits_with_uncertainties

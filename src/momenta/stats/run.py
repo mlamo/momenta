@@ -55,15 +55,10 @@ def run_ultranest(
     parameters: Parameters,
     precision_dlogz: float = 0.3,
     precision_dKL: float = 0.1,
-    vectorized: bool = True,
 ):
 
     model = ModelNested(detector, src, parameters)
-
-    if vectorized:
-        sampler = ultranest.ReactiveNestedSampler(model.param_names, model.loglike_vec, model.prior_vec, vectorized=True)
-    else:
-        sampler = ultranest.ReactiveNestedSampler(model.param_names, model.loglike, model.prior)
+    sampler = ultranest.ReactiveNestedSampler(model.param_names, model.loglike, model.prior, vectorized=True)
     result = sampler.run(show_status=False, viz_callback=False, dlogz=precision_dlogz, dKL=precision_dKL)
 
     result["samples"] = {k: v for k, v in zip(model.param_names, result["samples"].transpose()) if k.startswith("flux") or k == "itoy"}
