@@ -1,0 +1,64 @@
+{
+    "@context": "https://doi.org/10.5063/schema/codemeta-2.0",
+    "@type": "SoftwareSourceCode",
+    "license": "https://opensource.org/licenses/GPL-3.0",
+    "codeRepository": "https://github.com/mlamo/momenta",
+    "dateCreated": "2024-08-04",
+    "datePublished": "2024-08-04",
+    "dateModified": "2024-09-24",
+    "downloadUrl": "https://github.com/mlamo/momenta.git",
+    "issueTracker": "https://github.com/mlamo/momenta/issues",
+    "name": "Multi-Observations Multi-Energy Neutrino Transient Analysis",
+    "version": "1.1.0",
+    "description": "TThis package aims to compute constraints on the neutrino emission from transient objects (either point sources or with some larger uncertainty on the localisation).",
+    "applicationCategory": "Astroparticle physics",
+    "releaseNotes": "Updated version of the code with some optimisations",
+    "referencePublication": "TBD",
+    "developmentStatus": "active",
+    "readme": "https://github.com/mlamo/momenta/blob/main/README.md",
+    "softwareVersion": "1.1.0",
+    "keywords": [
+        "Multi-messenger",
+        "neutrinos",
+        "transient",
+        "gravitational wave",
+        "combination"
+    ],
+    "programmingLanguage": [
+        "Python 3"
+    ],
+    "operatingSystem": [
+        "Linux",
+        "Windows"
+    ],
+    "softwareRequirements": [
+        "Python 3.10+"
+    ],
+    "author": [
+        {
+            "@type": "Person",
+            "@id": "https://orcid.org/0000-0002-8860-5826",
+            "givenName": "Mathieu",
+            "familyName": "Lamoureux",
+            "email": "mathieu.lamoureux@uclouvain.be",
+            "affiliation": {
+                "@type": "Organization",
+                "name": "UCLouvain"
+            }
+        }
+    ],
+    "contributor": [
+        {
+            "@type": "Person",
+            "@id": "https://orcid.org/0000-0002-1010-5100",
+            "givenName": "Gwenhaël",
+            "familyName": "De Wasseige",
+            "email": "gwenhael.dewasseige@uclouvain.be",
+            "affiliation": {
+                "@type": "Organization",
+                "name": "UCLouvain"
+            }
+        }
+    ],
+    "maintainer": "https://orcid.org/0000-0002-8860-5826"
+}

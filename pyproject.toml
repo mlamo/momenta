@@ -8,14 +8,14 @@ dependencies = [
     "datetime",
     "h5py",
     "healpy",
-    "ligo.skymap",
+    "ligo.skymap==2.0.1",
     "matplotlib",
-    "numpy",
+    "numpy==1.26.4",
     "pandas",
-    "python-ligo-lw",
     "pyyaml",
     "scipy",
-    "typing"
+    "typing",
+    "ultranest==4.3.1"
 ]
 
 [project.optional-dependencies]

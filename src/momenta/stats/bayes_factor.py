@@ -26,6 +26,7 @@ from momenta.stats.model import ModelNested, ModelNested_BkgOnly
 
 
 def build_minimal_experiment(detector: NuDetectorBase):
+    """Build minimal experiment with 0 events in ON and OFF regions (can only work with ON/OFF bkg estimate)."""
     detector0 = copy.deepcopy(detector)
     for s in detector0.samples:
         if not isinstance(s.background, BackgroundPoisson):
@@ -37,15 +38,18 @@ def build_minimal_experiment(detector: NuDetectorBase):
 
 
 def run_bkg(detector: NuDetectorBase, parameters: Parameters):
-
+    """Compute Bayes evidence for background-only hypothesis."""
     model_bkg = ModelNested_BkgOnly(detector, parameters)
     sampler = ultranest.ReactiveNestedSampler(model_bkg.param_names, model_bkg.loglike, model_bkg.prior)
-    result = sampler.run(show_status=False, viz_callback=False)
-
+    result = sampler.run(show_status=False, viz_callback=False, dlogz=0.1)
     return result
 
 
 def compute_correction_tobkg(detector: NuDetectorBase, src: Transient, parameters: Parameters, return_error: bool = False):
+    """Compute correction factor to account for different dimensionalities of the background-only and bkg+signal models.
+    This is computed using the "Arithmetic Intrinsic Bayes Factor" where minimal samples that cannot discriminate between the two models
+    are used to estimate the correction. Other approaches may be implemented in the future.
+    """
 
     detector0 = build_minimal_experiment(detector)
     if detector0 is None:
@@ -70,6 +74,7 @@ def compute_correction_tobkg(detector: NuDetectorBase, src: Transient, parameter
 def compute_log_bayes_factor_tobkg(
     result: dict, detector: NuDetectorBase, src: Transient, parameters: Parameters, corrected: bool = True, return_error: bool = False
 ):
+    """Compute Bayes factor Evidence[bkg+signal | data) / Evidence(bkg-only | data), applying or not the correction."""
 
     result_bkg = run_bkg(detector, parameters)
     logB = result["logz"] - result_bkg["logz"]

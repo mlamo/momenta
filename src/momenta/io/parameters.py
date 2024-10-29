@@ -19,6 +19,7 @@ import os
 import yaml
 from typing import Optional
 
+from momenta.io.gw import default_samples_priorities
 from momenta.utils.flux import FluxBase
 from momenta.utils.conversions import JetModelBase
 
@@ -28,6 +29,7 @@ class Parameters:
         self.file = None
         self.flux = None
         self.jet = None
+        self.gw_posteriorsamples_priorities = default_samples_priorities
         if file is not None:
             assert os.path.isfile(file)
             self.file = file
@@ -43,22 +45,6 @@ class Parameters:
             # GW parameters
             if "gw" in params and "sample_priorities" in params["gw"]:
                 self.gw_posteriorsamples_priorities = params["gw"]["sample_priorities"]
-            else:
-                self.gw_posteriorsamples_priorities = [
-                    "PublicationSamples",
-                    "C01:IMRPhenomXPHM",
-                    "IMRPhenomXPHM",
-                    "C01:IMRPhenomPv3HM",
-                    "IMRPhenomPv3HM",
-                    "C01:IMRPhenomPv2",
-                    "IMRPhenomPv2",
-                    "C01:IMRPhenomNSBH:HighSpin",
-                    "IMRPhenomNSBH:HighSpin",
-                    "C01:IMRPhenomNSBH:LowSpin",
-                    "IMRPhenomNSBH:LowSpin",
-                    "C01:Mixed",
-                    "Mixed",
-                ]
 
     def set_models(self, flux: FluxBase = None, jet: JetModelBase = None):
         """Set the neutrino flux model and jet model."""

@@ -80,4 +80,4 @@ class PointSource(Transient):
             toys["ra"] = self.coords.ra.deg + np.rad2deg(dra)
             toys["dec"] = self.coords.dec.deg + np.rad2deg(ddec)
         toys["ipix"] = hp.ang2pix(nside, toys["ra"], toys["dec"], lonlat=True)
-        return pd.DataFrame(data=toys)
+        return pd.DataFrame(data=toys).to_records(index=False)

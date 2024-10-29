@@ -21,20 +21,17 @@ import logging
 import os
 import warnings
 
-import healpy as hp
 import numpy as np
 import scipy.integrate
 import yaml
-from scipy.integrate import quad
-from scipy.interpolate import interp1d, RegularGridInterpolator
 from scipy.linalg import block_diag
 from scipy.stats import gamma, truncnorm
 
 import astropy.coordinates
 import astropy.time
-from astropy.units import deg
+from astropy.units import rad
 
-import momenta.stats.pdfs as pdf
+import momenta.io.neutrinos_irfs as irfs
 
 
 warnings.filterwarnings("ignore", category=scipy.integrate.IntegrationWarning)
@@ -63,125 +60,7 @@ def infer_uncertainties(input_array: float | np.ndarray, nsamples: int, correlat
     raise RuntimeError("The size of uncertainty_acceptance does not match with the number of samples")
 
 
-class EffectiveAreaBase:
-    """Class to handle detector effective area for a given sample and neutrino flavour.
-    This default class handles only energy-dependent effective area."""
-
-    def __init__(self):
-        self.acceptances = {}
-
-    def evaluate(self, energy: float | np.ndarray, ipix: int, nside: int):
-        return 0
-
-    def compute_acceptance(self, fluxcomponent, ipix: int, nside: int):
-        def func(x: float):
-            return fluxcomponent.evaluate(np.exp(x)) * self.evaluate(np.exp(x), ipix, nside) * np.exp(x)
-
-        return quad(func, np.log(fluxcomponent.emin), np.log(fluxcomponent.emax), limit=500)[0]
-
-    def compute_acceptance_map(self, fluxcomponent, nside: int):
-        return np.array([self.compute_acceptance(fluxcomponent, ipix, nside) for ipix in range(hp.nside2npix(nside))])
-
-    def get_acceptance_map(self, fluxcomponent, nside: int):
-        if fluxcomponent.store_acceptance:
-            if str(fluxcomponent) not in self.acceptances:
-                self.acceptances[str(fluxcomponent)] = self.compute_acceptance_map(fluxcomponent, nside)
-            return hp.ud_grade(self.acceptances[str(fluxcomponent)], nside)
-        return self.compute_acceptance_map(fluxcomponent, nside)
-
-    def get_acceptance(self, fluxcomponent, ipix: int, nside: int):
-        if fluxcomponent.store_acceptance:
-            return self.get_acceptance_map(fluxcomponent, nside)[ipix]
-        return self.compute_acceptance(fluxcomponent, ipix, nside)
-
-
-class EffectiveAreaAllSky(EffectiveAreaBase):
-
-    def __init__(self):
-        super().__init__()
-        self.func = None
-
-    def read_csv(self, csvfile: str):
-        x, y = np.loadtxt(csvfile, delimiter=",").T
-        self.func = interp1d(x, y, bounds_error=False, fill_value=0)
-
-    def evaluate(self, energy: float | np.ndarray, ipix: int, nside: int):
-        return self.func(energy)
-
-    def compute_acceptance_map(self, fluxcomponent, nside):
-        acc = self.compute_acceptance(fluxcomponent, 0, nside) * np.ones(hp.nside2npix(nside))
-        return acc
-
-
-class EffectiveAreaDeclinationDep(EffectiveAreaBase):
-
-    def __init__(self):
-        super().__init__()
-        self.mapping = {}
-
-    def evaluate(self, energy: float | np.ndarray, ipix: int, nside: int):
-        if nside not in self.mapping:
-            self.mapping[nside] = self.map_ipix_to_declination(nside)
-        return self.func(energy, self.mapping[nside][ipix])
-
-    def compute_acceptance_map(self, fluxcomponent, nside):
-        if nside not in self.mapping:
-            self.mapping[nside] = self.map_ipix_to_declination(nside)
-        acc = np.zeros(hp.nside2npix(nside))
-        for dec, ipix in zip(*np.unique(self.mapping[nside], return_index=True)):
-            acc[self.mapping[nside] == dec] = self.compute_acceptance(fluxcomponent, ipix, nside)
-        return acc
-
-    def map_ipix_to_declination(self, nside):
-        ipix = np.arange(hp.nside2npix(nside))
-        _, dec = hp.pix2ang(nside, ipix, lonlat=True)
-        return dec
-
-
-class EffectiveAreaAltitudeDep(EffectiveAreaBase):
-
-    def __init__(self):
-        super().__init__()
-        self.func = None
-        self.mapping = {}
-
-    def read(self):
-        bins_logenergy = ...  # shape (M,)
-        bins_altitude = ...  # shape (N,)
-        aeff = ...  # shape (M,N)
-        self.func = RegularGridInterpolator((bins_logenergy, bins_altitude), aeff, bounds_error=False, fill_value=0)
-
-    def set_location(self, time, lat_deg, lon_deg):
-        self.obstime = time
-        self.location = astropy.coordinates.EarthLocation(lat=lat_deg * deg, lon=lon_deg * deg)
-        self.mapping = {}
-
-    def evaluate(self, energy: float | np.ndarray, ipix: int, nside: int):
-        if nside not in self.mapping:
-            self.mapping[nside] = self.map_ipix_to_altitude(nside)
-        return self.func((np.log10(energy), self.mapping[nside][ipix]))
-
-    def compute_acceptance_map(self, fluxcomponent, nside):
-        if nside not in self.mapping:
-            self.mapping[nside] = self.map_ipix_to_altitude(nside)
-        acc = np.zeros(hp.nside2npix(nside))
-        for alt, ipix in zip(*np.unique(self.mapping[nside], return_index=True)):
-            acc[self.mapping[nside] == alt] = self.compute_acceptance(fluxcomponent, ipix, nside)
-        return acc
-
-    def map_ipix_to_altitude(self, nside):
-        ipix = np.arange(hp.nside2npix(nside))
-        ra, dec = hp.pix2ang(nside, ipix, lonlat=True)
-        coords_eq = astropy.coordinates.SkyCoord(ra=ra * deg, dec=dec * deg, frame="icrs")
-        coords_loc = coords_eq.transform_to(astropy.coordinates.AltAz(obstime=self.obstime, location=self.location))
-        return coords_loc.alt.deg
-
-
 class Background(abc.ABC):
-    @abc.abstractmethod
-    def prepare_toys(self, ntoys: int):
-        pass
-
     @property
     @abc.abstractmethod
     def nominal(self):
@@ -200,9 +79,6 @@ class BackgroundFixed(Background):
     def __init__(self, b0: float):
         self.b0 = b0
 
-    def prepare_toys(self, ntoys: int):
-        return self.b0 * np.ones(ntoys)
-
     @property
     def nominal(self):
         return self.b0
@@ -217,9 +93,7 @@ class BackgroundFixed(Background):
 class BackgroundGaussian(Background):
     def __init__(self, b0: float, error_b: float):
         self.b0, self.error_b = b0, error_b
-
-    def prepare_toys(self, ntoys: int):
-        return truncnorm.rvs(-self.b0 / self.error_b, np.inf, loc=self.b0, scale=self.error_b, size=ntoys)
+        self.func = truncnorm(-self.b0 / self.error_b, np.inf, loc=self.b0, scale=self.error_b)
 
     @property
     def nominal(self):
@@ -229,25 +103,23 @@ class BackgroundGaussian(Background):
         return f"{self.b0:.2e} +/- {self.error_b:.2e}"
 
     def prior_transform(self, x):
-        return truncnorm.ppf(x, -self.b0 / self.error_b, np.inf, loc=self.b0, scale=self.error_b)
+        return self.func.ppf(x)
 
 
 class BackgroundPoisson(Background):
     def __init__(self, Noff: int, alpha_offon: int):
         self.Noff, self.alpha_offon = Noff, alpha_offon
-
-    def prepare_toys(self, ntoys: int):
-        return gamma.rvs(self.Noff + 1, scale=1 / self.alpha_offon, size=ntoys)
+        self.func = gamma(self.Noff + 1, scale=1 / self.alpha_offon)
 
     @property
     def nominal(self):
         return self.Noff / self.alpha_offon
 
     def __repr__(self):
-        return f"{self.nominal:.2e} = {self.Noff:d}/{self.alpha_offon:d}"
+        return f"{self.nominal:.2e} = {self.Noff:.0f}/{self.alpha_offon:.2e}"
 
     def prior_transform(self, x):
-        return gamma.ppf(x, self.Noff + 1, scale=1 / self.alpha_offon)
+        return self.func.ppf(x)
 
 
 class NuEvent:
@@ -295,6 +167,10 @@ class NuEvent:
     def log10energy(self):
         return np.log10(self.energy)
 
+    @property
+    def coords(self):
+        return astropy.coordinates.SkyCoord(ra=self.ra * rad, dec=self.dec * rad)
+
 
 class NuSample:
     """Class to handle a given neutrino sample characterised by its name, observed events, expected background and PDFs."""
@@ -304,8 +180,8 @@ class NuSample:
         self.effective_area = None
         self.nobserved = np.nan
         self.background = None
-        self.events = None
-        self.pdfs = {
+        self._events = None
+        self._pdfs = {
             "signal": {"ang": None, "ene": None, "time": None},
             "background": {"ang": None, "ene": None, "time": None},
         }
@@ -318,16 +194,21 @@ class NuSample:
         self.background = bkg
 
     def set_events(self, events: list[NuEvent]):
-        self.events = events
+        assert len(events) == self.nobserved or events is None
+        self._events = events
+
+    @property
+    def events(self):
+        return self._events
 
     def set_pdfs(
         self,
-        sig_ang: pdf.AngularSignal | None = None,
-        sig_ene: pdf.EnergySignal | None = None,
-        sig_time: pdf.TimeSignal | None = None,
-        bkg_ang: pdf.AngularBackground | None = None,
-        bkg_ene: pdf.EnergyBackground | None = None,
-        bkg_time: pdf.TimeBackground | None = None,
+        sig_ang: irfs.AngularSignal | None = None,
+        sig_ene: irfs.EnergySignal | None = None,
+        sig_time: irfs.TimeSignal | None = None,
+        bkg_ang: irfs.AngularBackground | None = None,
+        bkg_ene: irfs.EnergyBackground | None = None,
+        bkg_time: irfs.TimeBackground | None = None,
     ):
         if (sig_ang is None) ^ (bkg_ang is None):
             raise RuntimeError("One of the angular PDFs is missing!")
@@ -335,22 +216,28 @@ class NuSample:
             raise RuntimeError("One of the energy PDFs is missing!")
         if (sig_time is None) ^ (bkg_time is None):
             raise RuntimeError("One of the time PDFs is missing!")
-        self.pdfs["signal"]["ang"] = sig_ang
-        self.pdfs["signal"]["ene"] = sig_ene
-        self.pdfs["signal"]["time"] = sig_time
-        self.pdfs["background"]["ang"] = bkg_ang
-        self.pdfs["background"]["ene"] = bkg_ene
-        self.pdfs["background"]["time"] = bkg_time
+        self._pdfs["signal"]["ang"] = sig_ang
+        self._pdfs["signal"]["ene"] = sig_ene
+        self._pdfs["signal"]["time"] = sig_time
+        self._pdfs["background"]["ang"] = bkg_ang
+        self._pdfs["background"]["ene"] = bkg_ene
+        self._pdfs["background"]["time"] = bkg_time
 
-    def compute_event_probability(self, nsigs, nbkg, ev, ra_src, dec_src, flux):
-        psig, pbkg = np.ones_like(nsigs), 1
-        if self.pdfs["signal"]["ang"] is not None and self.pdfs["background"]["ang"]:
-            psig *= self.pdfs["signal"]["ang"](ev, ra_src, dec_src)
-            pbkg *= self.pdfs["background"]["ang"](ev)
-        if self.pdfs["signal"]["ene"] is not None and self.pdfs["background"]["ene"]:
-            psig *= self.pdfs["signal"]["ene"](ev, flux)
-            pbkg *= self.pdfs["background"]["ene"](ev)
-        return (psig.dot(nsigs) + nbkg * pbkg) / (np.sum(nsigs) + nbkg)
+    def compute_background_probability(self, ev):
+        pbkg = 1
+        if self._pdfs["background"]["ang"] is not None:
+            pbkg *= self._pdfs["background"]["ang"](ev)
+        if self._pdfs["background"]["ene"] is not None:
+            pbkg *= self._pdfs["background"]["ene"](ev)
+        return pbkg
+
+    def compute_signal_probability(self, ev, fluxcomponent, ra_src, dec_src):
+        psig = 1
+        if self._pdfs["signal"]["ang"] is not None:
+            psig *= self._pdfs["signal"]["ang"](ev, ra_src, dec_src)
+        if self._pdfs["signal"]["ene"] is not None:
+            psig *= self._pdfs["signal"]["ene"](ev, fluxcomponent)
+        return psig
 
 
 class NuDetectorBase(abc.ABC):
@@ -419,7 +306,7 @@ class NuDetector(NuDetectorBase):
         for i, smp in enumerate(self.samples):
             smp.set_observations(nobserved[i], background[i])
 
-    def set_effective_areas(self, aeffs: list[EffectiveAreaBase]):
+    def set_effective_areas(self, aeffs: list[irfs.EffectiveAreaBase]):
         for i, smp in enumerate(self.samples):
             smp.set_effective_area(aeffs[i])
 

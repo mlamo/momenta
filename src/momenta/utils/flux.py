@@ -17,26 +17,31 @@
 
 import abc
 import numpy as np
+from functools import partial
 from scipy.integrate import quad
 
 
 class Component(abc.ABC):
 
-    def __init__(self, emin, emax, store_acceptance=True):
+    def __init__(self, emin, emax, store="exact"):
         self.emin = emin
         self.emax = emax
-        self.store_acceptance = store_acceptance
-        self.shape_names = []
-        self.shape_values = []
-        self.shape_defaults = []
-        self.shape_boundaries = []
+        self.store = store
+        # fixed shape parameters
+        self.shapefix_names = []
+        self.shapefix_values = []
+        # variable shape parameters
+        self.shapevar_names = []
+        self.shapevar_values = []
+        self.shapevar_boundaries = []
+        self.shapevar_grid = []
 
     def __str__(self):
-        s = f"{type(self).__name__}/{self.emin:.1e}--{self.emax:.1e}"
-        if len(self.shape_names) == 0:
-            return s
-        strshape = "/".join([f"{n}={v}" for n, v in zip(self.shape_names, self.shape_values)])
-        return s + "/" + strshape
+        s = [f"{type(self).__name__}"]
+        s.append(f"{self.emin:.1e}--{self.emax:.1e}")
+        s.append(",".join([f"{n}={v}" for n, v in zip(self.shapefix_names, self.shapefix_values)]))
+        s.append(",".join([f"{n}={':'.join([str(_v) for _v in v])}" for n, v in zip(self.shapevar_names, self.shapevar_boundaries)]))
+        return "/".join([_s for _s in s if _s])
 
     def __eq__(self, other):
         return self.__dict__ == other.__dict__
@@ -44,19 +49,25 @@ class Component(abc.ABC):
     def __hash__(self):
         return hash(self.__str__())
 
-    @property
-    def nshapes(self):
-        return len(self.shape_names)
+    def init_shapevars(self):
+        self.shapevar_grid = [np.linspace(*s) for s in self.shapevar_boundaries]
+        self.shapevar_values = [0.5 * (s[0] + s[1]) for s in self.shapevar_boundaries]
 
-    def set_shapes(self, shapes):
-        self.shape_values = shapes
+    @property
+    def nshapevars(self):
+        return len(self.shapevar_names)
+
+    def set_shapevars(self, shapes):
+        self.shapevar_values = shapes
 
     @abc.abstractmethod
     def evaluate(self, energy):
         return None
 
     def flux_to_eiso(self, distance_scaling):
-        f = lambda x: self.evaluate(np.exp(x)) * (np.exp(x)) ** 2
+        def f(x):
+            return self.evaluate(np.exp(x)) * (np.exp(x)) ** 2
+
         integration = quad(f, np.log(self.emin), np.log(self.emax), limit=100)[0]
         return distance_scaling * integration
 
@@ -65,57 +76,101 @@ class Component(abc.ABC):
         return x
 
 
-class PowerLaw(Component):
-
-    def __init__(self, emin, emax, eref=1):
-        super().__init__(emin=emin, emax=emax, store_acceptance=False)
-        self.shape_names = ["gamma"]
-        self.shape_defaults = [2]
-        self.shape_values = self.shape_defaults
-        self.shape_boundaries = [(2, 3)]
-        self.eref = eref
-
-    def evaluate(self, energy):
-        return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy / self.eref, -self.shape_values[0]), 0)
-
-    def prior_transform(self, x):
-        return self.shape_boundaries[0][0] + (self.shape_boundaries[0][1] - self.shape_boundaries[0][0]) * x
-
-
 class FixedPowerLaw(Component):
 
-    def __init__(self, emin, emax, spectral_index, eref=1):
-        super().__init__(emin=emin, emax=emax, store_acceptance=True)
-        self.spectral_index = spectral_index
+    def __init__(self, emin, emax, gamma=2, eref=1):
+        super().__init__(emin=emin, emax=emax, store="exact")
         self.eref = eref
-
-    def __str__(self):
-        return f"{super().__str__()}/gamma={self.spectral_index}"
+        self.shapefix_names = ["gamma"]
+        self.shapefix_values = [gamma]
 
     def evaluate(self, energy):
-        return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy / self.eref, -self.spectral_index), 0)
+        return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy / self.eref, -self.shapefix_values[0]), 0)
 
 
-class BrokenPowerLaw(Component):
+class VariablePowerLaw(Component):
 
-    def __init__(self, emin, emax, eref=1):
-        super().__init__(emin=emin, emax=emax, store_acceptance=False)
-        self.shape_names = ["gamma", "log(ebreak)"]
-        self.shape_defaults = [2, np.log(1e6)]
-        self.shape_values = self.shape_defaults
-        self.shape_boundaries = [(1, 3), [5, 7]]
+    def __init__(self, emin, emax, gamma_range=(1, 4, 16), eref=1):
+        super().__init__(emin=emin, emax=emax, store="interpolate")
         self.eref = eref
+        self.shapevar_names = ["gamma"]
+        self.shapevar_boundaries = [gamma_range]
+        self.init_shapevars()
+        self.grid = np.vectorize(partial(FixedPowerLaw, self.emin, self.emax, eref=self.eref))(self.shapevar_grid[0])
 
     def evaluate(self, energy):
-        factor = (np.exp(self.shape_values[1]) / self.eref) ** (self.shape_values[0] - 2.58)
-        logE = np.log(energy)
+        return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy / self.eref, -self.shapevar_values[0]), 0)
+
+    def prior_transform(self, x):
+        return self.shapevar_boundaries[0][0] + (self.shapevar_boundaries[0][1] - self.shapevar_boundaries[0][0]) * x
+
+
+class FixedBrokenPowerLaw(Component):
+
+    def __init__(self, emin, emax, gamma1=2, gamma2=2, log10ebreak=1e5, eref=1):
+        super().__init__(emin=emin, emax=emax, store="exact")
+        self.eref = eref
+        self.shapefix_values = [gamma1, gamma2, log10ebreak]
+        self.shapefix_names = ["gamma1", "gamma2", "log(ebreak)"]
+
+    def evaluate(self, energy):
+        factor = (10 ** self.shapefix_values[2] / self.eref) ** (self.shapefix_values[1] - self.shapefix_values[0])
         f = np.where(
-            logE < self.shape_values[1], np.power(np.exp(logE) / self.eref, -2.58), factor * np.power(np.exp(logE) / self.eref, -spectral_index)
+            np.log10(energy) < self.shapefix_values[2],
+            np.power(energy / self.eref, -self.shapefix_values[0]),
+            factor * np.power(energy / self.eref, -self.shapefix_values[1]),
+        )
+        return np.where((self.emin <= energy) & (energy <= self.emax), f, 0)
+
+
+class VariableBrokenPowerLaw(FixedBrokenPowerLaw):
+
+    def __init__(self, emin, emax, gamma_range=(1, 4, 16), log10ebreak_range=(3, 6, 4), eref=1):
+        super().__init__(emin=emin, emax=emax)
+        self.store = "interpolate"
+        self.eref = eref
+        self.shapevar_names = ["gamma1", "gamma2", "log(ebreak)"]
+        self.shapevar_boundaries = np.array([[*gamma_range], [*gamma_range], [*log10ebreak_range]])
+        self.init_shapevars()
+        self.grid = np.vectorize(partial(FixedBrokenPowerLaw, self.emin, self.emax, eref=self.eref))(*np.meshgrid(*self.shapevar_grid))
+
+    def evaluate(self, energy):
+        factor = (10 ** (self.shapevar_values[2]) / self.eref) ** (self.shapevar_values[1] - self.shapevar_values[0])
+        f = np.where(
+            np.log10(energy) < self.shapevar_values[2],
+            np.power(energy / self.eref, -self.shapevar_values[0]),
+            factor * np.power(energy / self.eref, -self.shapevar_values[1]),
         )
         return np.where((self.emin <= energy) & (energy <= self.emax), f, 0)
 
     def prior_transform(self, x):
-        return self.shape_boundaries[0][0] + (self.shape_boundaries[0][1] - self.shape_boundaries[0][0]) * x
+        return self.shapevar_boundaries[:, 0] + (self.shapevar_boundaries[:, 1] - self.shapevar_boundaries[:, 0]) * x
+
+
+class SemiVariableBrokenPowerLaw(FixedBrokenPowerLaw):
+
+    def __init__(self, emin, emax, gamma1, gamma_range=(1, 4, 16), log10ebreak_range=(3, 6, 4), eref=1):
+        super().__init__(emin=emin, emax=emax)
+        self.store = "interpolate"
+        self.eref = eref
+        self.shapefix_names = ["gamma1"]
+        self.shapefix_values = [gamma1]
+        self.shapevar_names = ["gamma2", "log(ebreak)"]
+        self.shapevar_boundaries = np.array([[*gamma_range], [*log10ebreak_range]])
+        self.init_shapevars()
+        self.grid = np.vectorize(partial(FixedBrokenPowerLaw, self.emin, self.emax, gamma1=gamma1, eref=self.eref))(*np.meshgrid(*self.shapevar_grid))
+
+    def evaluate(self, energy):
+        factor = (10 ** (self.shapevar_values[2]) / self.eref) ** (self.shapevar_values[1] - self.shapevar_values[0])
+        f = np.where(
+            np.log10(energy) < self.shapevar_values[2],
+            np.power(energy / self.eref, -self.shapevar_values[0]),
+            factor * np.power(energy / self.eref, -self.shapevar_values[1]),
+        )
+        return np.where((self.emin <= energy) & (energy <= self.emax), f, 0)
+
+    def prior_transform(self, x):
+        return self.shapevar_boundaries[:, 0] + (self.shapevar_boundaries[:, 1] - self.shapevar_boundaries[:, 0]) * x
 
 
 class FluxBase(abc.ABC):
@@ -124,41 +179,31 @@ class FluxBase(abc.ABC):
         self.components = []
 
     def __str__(self):
-        return "__".join([str(c) for c in self.components])
+        return " + ".join([str(c) for c in self.components])
 
     @property
     def ncomponents(self):
         return len(self.components)
 
     @property
-    def nshapes(self):
-        return np.sum([c.nshapes for c in self.components])
+    def nshapevars(self):
+        return np.sum([c.nshapevars for c in self.components])
 
     @property
     def nparameters(self):
-        return self.ncomponents + self.nshapes
+        return self.ncomponents + self.nshapevars
 
     @property
-    def shape_positions(self):
-        return np.cumsum([c.nshapes for c in self.components]).astype(int)
+    def shapevar_positions(self):
+        return np.cumsum([c.nshapevars for c in self.components]).astype(int)
 
     @property
-    def shape_defaults(self):
-        defaults = []
-        for c in self.components:
-            defaults += list(c.shape_defaults)
-        return defaults
+    def shapevar_boundaries(self):
+        return np.concatenate([c.shapevar_boundaries for c in self.components], axis=0)
 
-    @property
-    def shape_boundaries(self):
-        boundaries = []
-        for c in self.components:
-            boundaries += list(c.shape_boundaries)
-        return boundaries
-
-    def set_shapes(self, shapes):
-        for c, i in zip(self.components, self.shape_positions):
-            c.set_shapes(shapes[i - c.nshapes : i])
+    def set_shapevars(self, shapes):
+        for c, i in zip(self.components, self.shapevar_positions):
+            c.set_shapevars(shapes[i - c.nshapevars : i])
 
     def evaluate(self, energy):
         return [c.evaluate(energy) for c in self.components]
@@ -167,34 +212,24 @@ class FluxBase(abc.ABC):
         return np.array([c.flux_to_eiso(distance_scaling) for c in self.components])
 
     def prior_transform(self, x):
-        return [y for c, i in zip(self.components, self.shape_positions) for y in c.prior_transform(x[i - c.nshapes : i])]
+        return np.concatenate([c.prior_transform(x[..., i - c.nshapevars : i]) for c, i in zip(self.components, self.shapevar_positions)], axis=-1)
 
 
 class FluxFixedPowerLaw(FluxBase):
 
-    def __init__(self, emin, emax, spectral_index, eref=1):
+    def __init__(self, emin, emax, gamma, eref=1):
         super().__init__()
-        self.components = [FixedPowerLaw(emin, emax, spectral_index, eref)]
+        self.components = [FixedPowerLaw(emin, emax, gamma, eref)]
 
 
 class FluxVariablePowerLaw(FluxBase):
 
-    def __init__(self, emin, emax, eref=1):
+    def __init__(self, emin, emax, gamma_range=(1, 4, 16), eref=1):
         super().__init__()
-        self.components = [PowerLaw(emin, emax, eref)]
+        self.components = [VariablePowerLaw(emin, emax, gamma_range, eref)]
 
 
-class FluxFixedDoublePowerLaw(FluxBase):
-
-    def __init__(self, emin, emax, spectral_indices, eref=1):
+class FluxVariableBrokenPowerLaw(FluxBase):
+    def __init__(self, emin, emax, gamma_range=(1, 4, 16), log10ebreak_range=(3, 6, 7), eref=1):
         super().__init__()
-        self.components = [
-            FixedPowerLaw(emin, emax, spectral_indices[0], eref),
-            FixedPowerLaw(emin, emax, spectral_indices[1], eref),
-        ]
-
-
-class FluxBrokenPowerLaw(FluxBase):
-    def __init__(self, emin, emax, eref=1):
-        super().__init__()
-        self.components = [BrokenPowerLaw(emin, emax, eref)]
+        self.components = [VariableBrokenPowerLaw(emin, emax, gamma_range, log10ebreak_range, eref)]

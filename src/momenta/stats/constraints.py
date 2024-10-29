@@ -80,9 +80,9 @@ def get_limits_with_uncertainties(weighted_samples: dict, model, CL: float = 0.9
         samples = {}
         for n, p in weighted_samples["points"].items():
             samples[n] = resample_equal(p, weights)
-        l = get_limits(samples, model, CL)
-        for n in l.keys():
-            limits[n].append(l[n])
+        _limits = get_limits(samples, model, CL)
+        for n in _limits.keys():
+            limits[n].append(_limits[n])
 
     res = {}
     for n in limits.keys():

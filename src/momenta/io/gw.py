@@ -30,6 +30,24 @@ import momenta.utils.conversions
 from momenta.io.transient import Transient
 
 
+default_samples_priorities = [
+    "PublicationSamples",
+    "Overall_posterior",
+    "C01:IMRPhenomXPHM",
+    "IMRPhenomXPHM",
+    "C01:IMRPhenomPv3HM",
+    "IMRPhenomPv3HM",
+    "C01:IMRPhenomPv2",
+    "IMRPhenomPv2",
+    "C01:IMRPhenomNSBH:HighSpin",
+    "IMRPhenomNSBH:HighSpin",
+    "C01:IMRPhenomNSBH:LowSpin",
+    "IMRPhenomNSBH:LowSpin",
+    "C01:Mixed",
+    "Mixed",
+]
+
+
 class GW(Transient):
     """Class to handle a full GW event, including FITS file (with skymap) and HDF5 file (with full posterior samples)."""
 
@@ -71,11 +89,11 @@ class GW(Transient):
             toys["distance_scaling"] = momenta.utils.conversions.distance_scaling(
                 toys.pop("luminosity_distance").to_numpy(), toys.pop("redshift").to_numpy()
             )
-            return toys
+            return toys.to_records(index=False)
         if self.fits:
-            return pd.DataFrame(data=self.fits.prepare_toys(nside))
+            return pd.DataFrame(data=self.fits.prepare_toys(nside)).to_records(index=False)
         self.log.warning("[GW] No toys are generated as this GW event has no FITS file nor posterior samples.")
-        return pd.DataFrame()
+        return pd.DataFrame().to_records(index=False)
 
 
 class _GWFits:
@@ -179,7 +197,7 @@ class _GWSamples:
         data = {}
         for var, varC in zip(variables, variables_corrected):
             data[var] = f[self.sample_name]["posterior_samples"][varC]
-            if var in ("ra", "deg"):
+            if var in ("ra", "dec"):
                 data[var] = np.rad2deg(data[var])  # convert from rad to deg
         f.close()
 

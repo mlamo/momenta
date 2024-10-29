@@ -15,7 +15,6 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-import numpy as np
 import contextlib
 import logging
 import os
@@ -23,7 +22,6 @@ import os
 from momenta.io import NuDetectorBase, Transient, Parameters
 from momenta.stats.model import ModelNested
 
-from pymultinest.solve import solve as multinest_solve
 import ultranest
 
 
@@ -51,23 +49,17 @@ def redirect_stdout(dest_filename):
         dest_file.close()
 
 
-def run_multinest(detector: NuDetectorBase, src: Transient, parameters: Parameters):
+def run_ultranest(
+    detector: NuDetectorBase,
+    src: Transient,
+    parameters: Parameters,
+    precision_dlogz: float = 0.3,
+    precision_dKL: float = 0.1,
+):
 
     model = ModelNested(detector, src, parameters)
-
-    with redirect_stdout(os.devnull):
-        result = multinest_solve(LogLikelihood=model.loglike, Prior=model.prior, n_dims=model.ndims, verbose=False, sampling_efficiency=0.1)
-
-    result["samples"] = {k: v for k, v in zip(model.param_names, result["samples"].transpose()) if k.startswith("flux") or k == "itoy"}
-    return model, result
-
-
-def run_ultranest(detector: NuDetectorBase, src: Transient, parameters: Parameters, precision_dlogz: float = 0.3):
-
-    model = ModelNested(detector, src, parameters)
-
-    sampler = ultranest.ReactiveNestedSampler(model.param_names, model.loglike, model.prior)
-    result = sampler.run(show_status=False, viz_callback=False, dlogz=precision_dlogz)
+    sampler = ultranest.ReactiveNestedSampler(model.param_names, model.loglike, model.prior, vectorized=True)
+    result = sampler.run(show_status=False, viz_callback=False, dlogz=precision_dlogz, dKL=precision_dKL)
 
     result["samples"] = {k: v for k, v in zip(model.param_names, result["samples"].transpose()) if k.startswith("flux") or k == "itoy"}
     result["weighted_samples"]["points"] = {

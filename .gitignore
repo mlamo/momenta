@@ -32,3 +32,4 @@ doc/gen_modules/*.examples
 doc/api
 
 checks/
+old/

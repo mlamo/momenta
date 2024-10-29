@@ -20,14 +20,14 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-
 import astropy.time
 import h5py
 from scipy.interpolate import RegularGridInterpolator
 
 import momenta.utils.flux as flux
 from momenta.io import GWDatabase, NuDetector, Parameters
-from momenta.io.neutrinos import EffectiveAreaAltitudeDep, BackgroundFixed
+from momenta.io.neutrinos_irfs import EffectiveAreaAltitudeDep
+from momenta.io.neutrinos import BackgroundFixed
 from momenta.stats.run import run_ultranest
 from momenta.stats.constraints import get_limits
 
@@ -67,7 +67,7 @@ def single_event(gwname: str, gwdbfile: str, det_results: dict, pars: Parameters
 
     model, result = run_ultranest(sk, gw, pars)
     limits = get_limits(result["samples"], model, CL=0.90)
-    print("90% upper limit on flux normalisation:", limits["flux0_norm"])
+    print(f"90% upper limit on flux normalisation: {limits['flux0_norm']:.2e} /GeV/cm²")
 
 
 if __name__ == "__main__":
