@@ -177,9 +177,9 @@ class ModelNested:
         nsigs = facc[:, np.newaxis, :] * (norms[:, :, np.newaxis] * accs / 6)  # dims = (npoints, ncompflux, nsamples)
         nexps = nbkg + np.sum(nsigs, axis=1)  # dims = (npoints, nsamples)
         if self.parameters.likelihood_method == "poisson":
-            loglkl = -np.sum(nexps + self.nobs * np.log(nexps), axis=1)  # dims = (npoints, )
+            loglkl = np.sum(-nexps + self.nobs * np.log(nexps), axis=1)  # dims = (npoints, )
         if self.parameters.likelihood_method == "pointsource":
-            loglkl = -np.sum(nexps, axis=1)  # dims = (npoints, )
+            loglkl = np.sum(-nexps, axis=1)  # dims = (npoints, )
             for isample, s in enumerate(self.detector.samples):
                 if s.events is None:
                     loglkl += self.nobs[isample] * np.log(nexps[:, isample])  # dims = (npoints, )
