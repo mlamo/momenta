@@ -229,6 +229,8 @@ class NuSample:
             pbkg *= self._pdfs["background"]["ang"](ev)
         if self._pdfs["background"]["ene"] is not None:
             pbkg *= self._pdfs["background"]["ene"](ev)
+        if self._pdfs["background"]["time"] is not None:
+            pbkg *= self._pdfs["background"]["time"](ev)
         return pbkg
 
     def compute_signal_probability(self, ev, fluxcomponent, ra_src, dec_src):
@@ -237,6 +239,12 @@ class NuSample:
             psig *= self._pdfs["signal"]["ang"](ev, ra_src, dec_src)
         if self._pdfs["signal"]["ene"] is not None:
             psig *= self._pdfs["signal"]["ene"](ev, fluxcomponent)
+        time_pdf = self._pdfs["signal"]["time"]
+        if time_pdf is not None:
+            if isinstance(time_pdf, irfs.PDFFluxDependent):
+                psig *= time_pdf(ev)#, fluxcomponent)
+            else:
+                psig *= time_pdf(ev) 
         return psig
 
 
