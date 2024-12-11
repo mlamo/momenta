@@ -101,7 +101,7 @@ def compute_differential_limits(detector: NuDetectorBase, src: Transient, parame
     return limits
 
 
-def get_bestfit(sample: np.ndarray, xmin: float = 0, xmax: float = None):
+def get_bestfit(sample: np.ndarray, xmin: float = 0, xmax: float | None = None):
 
     # getting PDF using KDE
     if xmin is None:
