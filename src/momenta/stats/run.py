@@ -56,7 +56,9 @@ def run_ultranest(
     precision_dlogz: float = 0.3,
     precision_dKL: float = 0.1,
 ):
-
+    # two classes have things set after the constructor that will be needed here:
+    detector.validate() # detector is sufficiently described
+    parameters.validate() # all needed parameters e.g. flux model
     model = ModelNested(detector, src, parameters)
     sampler = ultranest.ReactiveNestedSampler(model.param_names, model.loglike, model.prior, vectorized=True)
     result = sampler.run(show_status=False, viz_callback=False, dlogz=precision_dlogz, dKL=precision_dKL)

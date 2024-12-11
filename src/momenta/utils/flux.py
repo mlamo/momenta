@@ -43,6 +43,11 @@ class Component(abc.ABC):
         s.append(",".join([f"{n}={':'.join([str(_v) for _v in v])}" for n, v in zip(self.shapevar_names, self.shapevar_boundaries)]))
         return "/".join([_s for _s in s if _s])
 
+    # some cases like Jupyter we need a repr,
+    # and default implementation is specific enough.
+    def __repr__(self):
+        return self.__str__()
+
     def __eq__(self, other):
         return self.__dict__ == other.__dict__
 
@@ -180,6 +185,9 @@ class FluxBase(abc.ABC):
 
     def __str__(self):
         return " + ".join([str(c) for c in self.components])
+    
+    def __repr__(self):
+        return " + ".join([c.__repr__() for c in self.components])
 
     @property
     def ncomponents(self):

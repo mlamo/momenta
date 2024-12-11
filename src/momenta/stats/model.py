@@ -71,10 +71,23 @@ class ModelNested:
         self.detector = detector
         self.parameters = parameters
         self.flux = parameters.flux
+        self.src = src
         self.toys_src = src.prepare_prior_samples(parameters.nside)
         self.ntoys_src = len(self.toys_src)
         self.fluxnorm_prior = self.parameters.prior_normalisation
         self.fluxnorm_range = self.parameters.prior_normalisation_range
+
+    def __repr__(self):
+        params = []
+        for attr in ["detector", "src", "parameters"]:
+            val = getattr(self, attr)
+            if val is not None:
+                params.append(f"{attr}={val}")
+        params_str = ", ".join(params)
+        return f"ModelNested({params_str})"
+    
+    def __str__(self):
+        return self.__repr__()
 
     @property
     def ndims(self):
@@ -211,7 +224,19 @@ class ModelNested_BkgOnly:
         self.bkg_variations = parameters.apply_det_systematics
         self.detector = detector
         self.parameters = parameters
-
+    
+    def __repr__(self):
+        params = []
+        for attr in ["detector", "parameters"]:
+            val = getattr(self, attr)
+            if val is not None:
+                params.append(f"{attr}={val}")
+        params_str = ", ".join(params)
+        return f"ModelNested_BkgOnly({params_str})"
+    
+    def __str__(self):
+        return self.__repr__()
+    
     @property
     def ndims(self):
         nd = 0

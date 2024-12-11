@@ -16,6 +16,7 @@
 """
 
 import abc
+from typing import Tuple
 import astropy.coordinates
 import astropy.time
 import astropy.units as u
@@ -30,8 +31,7 @@ import momenta.utils.conversions
 
 
 class Transient:
-
-    def __init__(self, name: str = None, utc: astropy.time.Time | None = None, logger: str = "momenta"):
+    def __init__(self, name: str = '', utc: astropy.time.Time | None = None, logger: str = "momenta"):
         self.name = name
         self.utc = utc
         self.logger = logger
@@ -46,15 +46,41 @@ class Transient:
 
 
 class PointSource(Transient):
-
     def __init__(
-        self, ra_deg: float, dec_deg: float, err_deg: float, name: str = None, utc: astropy.time.Time | None = None, logger: str = "momenta"
+        self, ra_deg: float, dec_deg: float,
+        err_deg: float | None = None, name: str = '', utc: astropy.time.Time | None = None,
+        logger: str = "momenta",
     ):
+        """Transient point source.
+
+        Args:
+            ra_deg (float): Right ascension [deg]
+            dec_deg (float): Declination [deg]
+            err_deg (float, optional): Angular error.
+            name (str, optional): Name.
+            utc (astropy.time.Time | None, optional): Transient time.
+            logger (str, optional): Logger name. Defaults to "momenta".
+        """
         super().__init__(name, utc, logger)
+        self.ra_deg = ra_deg
+        self.dec_deg = dec_deg
         self.coords = astropy.coordinates.SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame="icrs")
         self.err = err_deg * u.deg
         self.distance = None
         self.redshift = None
+
+    def __repr__(self):
+        params = []
+        for attr in ["name", "ra_deg", "dec_deg", "err", "utc", "redshift", "distance"]:
+            val = getattr(self, attr)
+            if val is not None:
+                params.append(f"{attr}={val}")
+        params_str = ", ".join(params)
+        return f"PointSource({params_str})"
+    
+    def __str__(self):
+        return self.__repr__()
+
 
     def set_distance(self, distance):
         self.distance = distance
