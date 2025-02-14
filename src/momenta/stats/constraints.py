@@ -55,10 +55,10 @@ def get_limits(samples: dict, model, CL: float = 0.90) -> dict[str, float]:
         dict[str, float]: dictionary of upper limits
     """
 
-    samples.update(calculate_deterministics(samples, model))
+    _samples = samples.update(calculate_deterministics(samples, model))
 
     limits = {}
-    for n, s in samples.items():
+    for n, s in _samples.items():
         limits[n] = upperlimit_from_sample(s, CL)
     return limits
 
