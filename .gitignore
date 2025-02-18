@@ -38,6 +38,7 @@ env/**
 
 # IDE files
 *.code-workspace
+.vscode
 
 # Jupyter files
 **/*ipynb_checkpoints
