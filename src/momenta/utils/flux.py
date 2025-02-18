@@ -66,7 +66,7 @@ class Component(abc.ABC):
         self.shapevar_values = shapes
 
     @abc.abstractmethod
-    def evaluate(self, energy):
+    def evaluate(self, energy, time : float | None = None):
         return None
 
     def flux_to_eiso(self, distance_scaling):
@@ -91,6 +91,18 @@ class FixedPowerLaw(Component):
 
     def evaluate(self, energy):
         return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy / self.eref, -self.shapefix_values[0]), 0)
+
+class TimeDependentFixedPowerLaw(FixedPowerLaw):
+    def __init__(self, func, emin, emax, gamma=2, eref=1):
+        super().__init__(emin, emax, gamma, eref)
+        self.func = func
+
+    def evaluate(self, energy, time : float | None = None):
+        fluence = super().evaluate(energy)
+        if time is None:
+            return fluence
+        else:
+            return fluence * self.func(time)
 
 
 class VariablePowerLaw(Component):
