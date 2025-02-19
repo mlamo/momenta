@@ -20,14 +20,12 @@ import yaml
 
 from momenta.io.gw import default_samples_priorities
 from momenta.utils.flux import FluxBase
-from momenta.utils.conversions import JetModelBase
 
 
 class Parameters:
     def __init__(self, file: str | None = None):
         self.file = None
         self.flux = None
-        self.jet = None
         self.gw_posteriorsamples_priorities = default_samples_priorities
         if file is not None:
             assert os.path.isfile(file)
@@ -39,8 +37,12 @@ class Parameters:
             self.apply_det_systematics = bool(params["detector_systematics"])
             self.likelihood_method = params["analysis"]["likelihood"]
             # signal priors
-            self.prior_normalisation = params["analysis"]["prior_normalisation"]["type"]
-            self.prior_normalisation_range = params["analysis"]["prior_normalisation"]["range"]
+            self.prior_normalisation_var = params["analysis"]["prior_normalisation"]["variable"]
+            self.prior_normalisation_type = params["analysis"]["prior_normalisation"]["type"]
+            self.prior_normalisation_range = [
+                params["analysis"]["prior_normalisation"]["range"]["min"], 
+                params["analysis"]["prior_normalisation"]["range"]["max"]
+            ]
             # GW parameters
             if "gw" in params and "sample_priorities" in params["gw"]:
                 self.gw_posteriorsamples_priorities = params["gw"]["sample_priorities"]
@@ -57,12 +59,9 @@ class Parameters:
                 params.append(f"{attr}={val}")
         return "_".join(params)
 
-    def set_models(self, flux: FluxBase | None = None, jet: JetModelBase | None = None):
-        """Set the neutrino flux model and jet model."""
-        if flux is not None:
-            self.flux = flux
-        if jet is not None:
-            self.jet = jet
+    def set_flux(self, flux: FluxBase):
+        """Set the neutrino flux model."""
+        self.flux = flux
 
     def validate(self):
         """Check if minimal configuration for use is present."""
@@ -70,7 +69,6 @@ class Parameters:
         # and jet is not strictly needed
         if self.flux is None:
             raise RuntimeError(f"[Parameters] did not validate, flux is not set")
-
 
     @property
     def str_filename(self):

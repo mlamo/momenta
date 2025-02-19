@@ -18,7 +18,7 @@
 import numpy as np
 from scipy.stats import norm, poisson
 
-from momenta.io import NuDetectorBase, Transient, Parameters
+from momenta.io import NuDetectorBase, Observations, Parameters, Transient
 from momenta.utils.conversions import solarmass_to_erg
 
 
@@ -29,36 +29,52 @@ def calculate_deterministics(samples, model):
     - fnu: ratio between total energy in neutrinos `etot` and radiated energy in GW using `radiated_energy` [no units]
     """
     det = {}
-    # Stop here if distance is not provided
-    if "distance_scaling" not in model.toys_src.dtype.names:
-        return det
     itoys = samples["itoy"].astype(int)
     nsamples = len(itoys)
-    distance_scaling = model.toys_src[itoys]["distance_scaling"]
-    norms = np.array([samples[f"flux{i}_norm"] for i in range(model.flux.ncomponents)])
-    if model.flux.nshapevars > 0:
-        shapes = np.array([samples[f"flux{i}_{s}"] for i, c in enumerate(model.flux.components) for s in c.shape_names])
-        det["eiso"] = np.empty(nsamples)
+    distance_scaling = model.toys_src[itoys]["distance_scaling"] if "distance_scaling" in model.toys_src.dtype.names else np.nan*np.ones(nsamples)
+    energy_scaling = model.toys_src[itoys]["energy_scaling"] if "energy_scaling" in model.toys_src.dtype.names else np.nan*np.ones(nsamples)
+    viewing_angle = model.toys_src[itoys]["viewing_angle"] if "viewing_angle" in model.toys_src.dtype.names else np.nan*np.ones(nsamples)
+    if model.priornorm_var == "flux":
+        fluxnorms = np.array([samples[f"norm{i}"] for i in range(model.flux.ncomponents)])
+        for i in range(model.flux.ncomponents):
+            det[f"fluxnorm{i}"] = fluxnorms[i]
+        shapes = np.array([samples[f"flux{i}_{s}"] for i, c in enumerate(model.flux.components) for s in c.shapevar_names])
+        det["etot"] = np.empty(nsamples)
+        det["fnu"] = np.empty(nsamples)
+        for i in range(model.flux.ncomponents):
+            det[f"etot{i}"] = np.empty(nsamples)
+            det[f"fnu{i}"] = np.empty(nsamples)
         for isample in range(nsamples):
-            model.flux.set_shapevars(shapes[:, isample])
-            det["eiso"][isample] = np.sum(norms * model.flux.flux_to_eiso(distance_scaling[isample]))
-    else:
-        det["eiso"] = np.sum(norms + model.flux.flux_to_eiso(distance_scaling), axis=0)
-    if "radiated_energy" in model.toys_src.dtype.names:
-        radiated_energy = model.toys_src[itoys]["radiated_energy"]
-        det["fnuiso"] = det["eiso"] / (radiated_energy * solarmass_to_erg)
-    # Stop here if jet model is not provided or if `theta_jn`` is missing
-    if model.parameters.jet is None or "theta_jn" not in model.toys_src.dtype.names:
-        return det
-    theta_jn = model.toys_src[itoys]["theta_jn"]
-    det["etot"] = det["eiso"] / model.parameters.jet.etot_to_eiso(theta_jn)
-    if "radiated_energy" in model.toys_src.dtype.names:
-        radiated_energy = model.toys_src[itoys]["radiated_energy"]
-        det["fnu"] = det["etot"] / (radiated_energy * solarmass_to_erg)
+            model.flux.set_shapevars(shapes[:, isample] if len(shapes)>0 else [])
+            _etot = fluxnorms[:, isample] * model.flux.flux_to_etot(distance_scaling[isample], viewing_angle[isample])
+            _fnu = _etot / energy_scaling[isample]
+            det["etot"][isample], det["fnu"][isample] = np.sum(_etot), np.sum(_fnu)
+            for i in range(model.flux.ncomponents):
+                det[f"etot{i}"][isample] = _etot[i]
+                det[f"fnu{i}"][isample] = _fnu[i]
+    elif model.priornorm_var == "etot":
+        etotnorms = np.array([samples[f"norm{i}"] for i in range(model.flux.ncomponents)])
+        for i in range(model.flux.ncomponents):
+            det[f"etot{i}"] = etotnorms[i]
+        shapes = np.array([samples[f"flux{i}_{s}"] for i, c in enumerate(model.flux.components) for s in c.shapevar_names])
+        det["etot"] = np.sum(etotnorms, axis=0)
+        det["fnu"] = np.empty(nsamples)
+        for i in range(model.flux.ncomponents):
+            det[f"fluxnorm{i}"] = np.empty(nsamples)
+            det[f"fnu{i}"] = np.empty(nsamples)
+        for isample in range(nsamples):
+            model.flux.set_shapevars(shapes[:, isample] if len(shapes)>0 else [])
+            _fluxnorm = etotnorms[:, isample] * model.flux.etot_to_flux(distance_scaling[isample], viewing_angle[isample])
+            _fnu = etotnorms[:, isample] / energy_scaling[isample]
+            det["fnu"][isample] = np.sum(_fnu)
+            for i in range(model.flux.ncomponents):
+                det[f"fluxnorm{i}"][isample] = _fluxnorm[i]
+                det[f"fnu{i}"][isample] = _fnu[i]
     return det
 
 
-class ModelNested:
+class ModelOneSource:
+    """Ultranest posterior model for a single source and set of observations."""
 
     def __init__(self, detector: NuDetectorBase, src: Transient, parameters: Parameters):
         self.nobs = np.array([s.nobserved for s in detector.samples])
@@ -74,8 +90,9 @@ class ModelNested:
         self.src = src
         self.toys_src = src.prepare_prior_samples(parameters.nside)
         self.ntoys_src = len(self.toys_src)
-        self.fluxnorm_prior = self.parameters.prior_normalisation
-        self.fluxnorm_range = self.parameters.prior_normalisation_range
+        self.priornorm_var = self.parameters.prior_normalisation_var
+        self.priornorm_type = self.parameters.prior_normalisation_type
+        self.priornorm_range = self.parameters.prior_normalisation_range
 
     def __repr__(self):
         params = []
@@ -84,7 +101,7 @@ class ModelNested:
             if val is not None:
                 params.append(f"{attr}={val}")
         params_str = ", ".join(params)
-        return f"ModelNested({params_str})"
+        return f"ModelOneSource({params_str})"
     
     def __str__(self):
         return self.__repr__()
@@ -100,7 +117,7 @@ class ModelNested:
 
     @property
     def param_names(self):
-        params = [f"flux{i}_norm" for i in range(self.flux.ncomponents)]
+        params = [f"norm{i}" for i in range(self.flux.ncomponents)]
         params += [f"flux{i}_{s}" for i, c in enumerate(self.flux.components) for s in c.shapevar_names]
         params += ["itoy"]
         if self.bkg_variations:
@@ -110,12 +127,12 @@ class ModelNested:
         return params
 
     def prior_norm(self, cube):
-        if self.fluxnorm_prior == "flat-linear":
-            return self.fluxnorm_range[0] + (self.fluxnorm_range[1] - self.fluxnorm_range[0]) * cube
-        elif self.fluxnorm_prior == "flat-log":
-            return np.power(10, np.log10(self.fluxnorm_range[0]) + (np.log10(self.fluxnorm_range[1]) - np.log10(self.fluxnorm_range[0])) * cube)
-        elif self.fluxnorm_prior == "jeffreys":
-            return self.fluxnorm_range[0] + (self.fluxnorm_range[1] - self.fluxnorm_range[0]) * cube
+        if self.priornorm_type == "flat-linear":
+            return self.priornorm_range[0] + (self.priornorm_range[1] - self.priornorm_range[0]) * cube
+        elif self.priornorm_type == "flat-log":
+            return np.power(10, np.log10(self.priornorm_range[0]) + (np.log10(self.priornorm_range[1]) - np.log10(self.priornorm_range[0])) * cube)
+        elif self.priornorm_type == "jeffreys":
+            return self.priornorm_range[0] + (self.priornorm_range[1] - self.priornorm_range[0]) * cube
 
     def prior(self, cube):
         """Convert from unit hypercube to hyperparameter space following the prior distributions.
@@ -154,7 +171,7 @@ class ModelNested:
         """
         npoints = cube.shape[0]
         # INPUTS
-        # > flux normalisation parameters
+        # > normalisation parameters
         i = 0
         norms = cube[:, i : i + self.flux.ncomponents]  # dims = (npoints, ncompflux)
         i += self.flux.ncomponents
@@ -176,6 +193,17 @@ class ModelNested:
             facc = cube[:, i : i + self.nsamples]  # dims = (npoints, nsamples)
         else:
             facc = np.ones((npoints, self.nsamples))
+        # > get proper flux norms
+        if self.priornorm_var == "flux":
+            fluxnorms = norms
+        else:
+            _distance_scaling = toys.distance_scaling if "distance_scaling" in toys.dtype.names else [np.nan]*len(toys)
+            _viewing_angle = toys.viewing_angle if "viewing_angle" in toys.dtype.names else [np.nan]*len(toys)
+            _energy_denom = toys.energy_denom if "energy_denom" in toys.dtype.names else [np.nan]*len(toys)
+            if self.priornorm_var == "etot":
+                fluxnorms = norms * self.flux.etot_to_flux(_distance_scaling, _viewing_angle)
+            elif self.priornorm_var == "fnu":
+                fluxnorms = norms * _energy_denom * self.flux.etot_to_flux(_distance_scaling, _viewing_angle)
         # ACCEPTANCE
         accs = np.zeros((npoints, self.flux.ncomponents, self.detector.nsamples))  # dims = (npoints, ncompflux, nsamples)
         for ipoint in range(npoints):
@@ -187,7 +215,7 @@ class ModelNested:
                 for isample, s in enumerate(self.detector.samples):
                     accs[ipoint, iflux, isample] = s.effective_area.get_acceptance(c, toys[ipoint].ipix, self.parameters.nside)
         # LOG-LIKELIHOOD
-        nsigs = facc[:, np.newaxis, :] * (norms[:, :, np.newaxis] * accs / 6)  # dims = (npoints, ncompflux, nsamples)
+        nsigs = facc[:, np.newaxis, :] * (fluxnorms[:, :, np.newaxis] * accs / 6)  # dims = (npoints, ncompflux, nsamples)
         nexps = nbkg + np.sum(nsigs, axis=1)  # dims = (npoints, nsamples)
         if self.parameters.likelihood_method == "poisson":
             loglkl = np.sum(-nexps + self.nobs * np.log(nexps), axis=1)  # dims = (npoints, )
@@ -214,8 +242,8 @@ class ModelNested:
         return loglkl
 
 
-class ModelNested_BkgOnly:
-    """Same model as `ModelNested` but only with the background (used for Bayes factor computation)."""
+class ModelOneSource_BkgOnly:
+    """Same model as `ModelOneSource` but only with the background (used for Bayes factor computation)."""
 
     def __init__(self, detector: NuDetectorBase, parameters: Parameters):
         self.nobs = np.array([s.nobserved for s in detector.samples])
@@ -232,7 +260,7 @@ class ModelNested_BkgOnly:
             if val is not None:
                 params.append(f"{attr}={val}")
         params_str = ", ".join(params)
-        return f"ModelNested_BkgOnly({params_str})"
+        return f"ModelOneSource_BkgOnly({params_str})"
     
     def __str__(self):
         return self.__repr__()
@@ -267,3 +295,25 @@ class ModelNested_BkgOnly:
         # Compute log-likelihood
         loglkl = np.sum(poisson.logpmf(self.nobs, nbkg))
         return loglkl
+
+
+class ModelStacked:
+    """Ultranest posterior model for a catalogue of sources and observations."""
+    
+    def __init__(self, obs: Observations, parameters: Parameters):
+        self.nobs, self.bkg, self.nsamples = obs.get_neutrino_data()
+        self.bkg_variations = parameters.apply_det_systematics
+        self.chol_cov_acc = []
+        for err_acc in obs.get_neutrino_error_acceptance():
+            if not parameters.apply_det_systematics or np.all(err_acc == 0):
+                self.chol_cov_acc.append(None)
+            self.chol_cov_acc.append(np.linalg.cholesky(err_acc + 1e-5 * np.identity(self.nsamples)))
+        self.sources = obs.keys()
+        self.detectors = obs.values()
+        self.parameters = parameters
+        self.flux = parameters.flux
+        self.toys_sources = [src.prepare_prior_samples(parameters.nside) for src in self.sources]
+        self.ntoys_sources = [len(toys) for toys in self.toys_sources]
+        self.priornorm_var = self.parameters.prior_normalisation_var
+        self.priornorm_type = self.parameters.prior_normalisation_type
+        self.priornorm_range = self.parameters.prior_normalisation_range
