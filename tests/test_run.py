@@ -30,8 +30,11 @@ class TestExamples(unittest.TestCase):
             analysis:
                 likelihood: poisson
                 prior_normalisation:
+                    variable: flux
                     type: flat-linear
-                    range: [0.0, 10000000000]
+                    range:
+                        min: 0.0
+                        max: 1.0e+10
         """
         self.config_file = f"{self.tmpdir}/config.yaml"
         with open(self.config_file, "w") as f:
@@ -55,7 +58,7 @@ class TestExamples(unittest.TestCase):
 
         # configuration
         self.pars = Parameters(self.config_file)
-        self.pars.set_models(momenta.utils.flux.FluxFixedPowerLaw(1, 100, 2), momenta.utils.conversions.JetIsotropic())
+        self.pars.set_flux(momenta.utils.flux.FluxFixedPowerLaw(1, 100, 2))
         # GW database
         database_gw = GWDatabase(self.gwdb_file)
         database_gw.set_parameters(self.pars)
