@@ -109,11 +109,11 @@ def list_jet_models() -> list[JetModelBase]:
 
 
 def redshift_to_lumidistance(redshift: float):
-    return (redshift * acu.redshift).to(u.Mpc, acu.redshift_distance(kind="luminosity"))
+    return (redshift * acu.redshift).to(u.Mpc, acu.redshift_distance(kind="luminosity")).value
 
 
 def lumidistance_to_redshift(distance: float):
-    return (distance * u.Mpc).to(acu.redshift, acu.redshift_distance(kind="luminosity"))
+    return (distance * u.Mpc).to(acu.redshift, acu.redshift_distance(kind="luminosity")).value
 
 
 def distance_scaling(distance: float, redshift: float | None = None):

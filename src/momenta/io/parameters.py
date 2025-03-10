@@ -68,7 +68,9 @@ class Parameters:
         # others were required during constructor, only flux and jet set afterwards
         # and jet is not strictly needed
         if self.flux is None:
-            raise RuntimeError(f"[Parameters] did not validate, flux is not set")
+            raise RuntimeError("[Parameters] did not validate, flux is not set")
+        if self.prior_normalisation_var not in ["flux", "etot", "fnu"]:
+            raise RuntimeError(f"[Parameters] did not validate, the variable used for prior normalisation ({self.prior_normalisation_var} is unknown")
 
     @property
     def str_filename(self):

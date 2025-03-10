@@ -1,9 +1,10 @@
+import awkward as ak
 import numpy as np
 
 from momenta.io import Transient, NuDetectorBase
 
 
-class Observations(dict):
+class Stack(dict):
     
     def __init__(self):
         pass
@@ -18,9 +19,9 @@ class Observations(dict):
     def list_source_names(self):
         return [src.name for src in self.keys()]
 
-    def get_neutrino_data(self):    
-        nobs = np.array([[s.nobserved for s in det.samples] for det in self.values()])
-        bkg = np.array([[s.background for s in det.samples] for det in self.values()])
+    def get_neutrino_data(self):
+        nobs = ak.Array([[s.nobserved for s in det.samples] for det in self.values()])
+        bkg = [[s.background for s in det.samples] for det in self.values()]
         nsamples = np.array([det.nsamples for det in self.values()])
         return nobs, bkg, nsamples
     
