@@ -35,6 +35,12 @@ class Transient:
         self.name = name
         self.utc = utc
         self.logger = logger
+        
+    def __repr__(self):
+        return self.name
+    
+    def __str__(self):
+        return self.__repr__()
 
     @property
     def log(self):
@@ -68,19 +74,6 @@ class PointSource(Transient):
         self.err = err_deg * u.deg
         self.distance = None
         self.redshift = None
-
-    def __repr__(self):
-        params = []
-        for attr in ["name", "ra_deg", "dec_deg", "err", "utc", "redshift", "distance"]:
-            val = getattr(self, attr)
-            if val is not None:
-                params.append(f"{attr}={val}")
-        params_str = ", ".join(params)
-        return f"PointSource({params_str})"
-    
-    def __str__(self):
-        return self.__repr__()
-
 
     def set_distance(self, distance):
         self.distance = distance

@@ -20,7 +20,7 @@ import logging
 import os
 
 from momenta.io import NuDetectorBase, Transient, Parameters
-from momenta.stats.model import ModelNested
+from momenta.stats.model import ModelOneSource
 
 import ultranest
 
@@ -59,12 +59,12 @@ def run_ultranest(
     # two classes have things set after the constructor that will be needed here:
     detector.validate() # detector is sufficiently described
     parameters.validate() # all needed parameters e.g. flux model
-    model = ModelNested(detector, src, parameters)
+    model = ModelOneSource(detector, src, parameters)
     sampler = ultranest.ReactiveNestedSampler(model.param_names, model.loglike, model.prior, vectorized=True)
     result = sampler.run(show_status=False, viz_callback=False, dlogz=precision_dlogz, dKL=precision_dKL)
 
-    result["samples"] = {k: v for k, v in zip(model.param_names, result["samples"].transpose()) if k.startswith("flux") or k == "itoy"}
+    result["samples"] = {k: v for k, v in zip(model.param_names, result["samples"].transpose()) if k.startswith("flux") or k.startswith("norm") or k == "itoy"}
     result["weighted_samples"]["points"] = {
-        k: v for k, v in zip(model.param_names, result["weighted_samples"]["points"].transpose()) if k.startswith("flux") or k == "itoy"
+        k: v for k, v in zip(model.param_names, result["weighted_samples"]["points"].transpose()) if k.startswith("flux") or k.startswith("norm") or k == "itoy"
     }
     return model, result
