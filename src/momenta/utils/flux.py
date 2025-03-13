@@ -103,6 +103,12 @@ class TimeDependentFixedPowerLaw(FixedPowerLaw):
             return fluence
         else:
             return fluence * self.func(time)
+# still want an Eiso that is independent of time
+# in new architecture, parameters are component Eiso (by default independent when combined in a standard Flux)
+# TODO make other Flux that allows correlation
+# needed for stacking, as Phi has a built-in d^2 factor from Eiso
+# not physical to include this in f_nu_i  = Etot/EGW or Etransient
+# but that is the place where you could e.g. have L^2 weighting
 
 
 class VariablePowerLaw(Component):
