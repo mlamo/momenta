@@ -77,6 +77,8 @@ class ModelOneSource:
     """Ultranest posterior model for a single source and set of observations."""
 
     def __init__(self, detector: NuDetectorBase, src: Transient, parameters: Parameters):
+        detector.validate() # detector is sufficiently described
+        parameters.validate() # all needed parameters e.g. flux model
         self.nobs = np.array([s.nobserved for s in detector.samples])
         self.bkg = np.array([s.background for s in detector.samples])
         self.nsamples = detector.nsamples

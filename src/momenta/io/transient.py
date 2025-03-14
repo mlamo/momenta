@@ -62,7 +62,7 @@ class PointSource(Transient):
         Args:
             ra_deg (float): Right ascension [deg]
             dec_deg (float): Declination [deg]
-            err_deg (float, optional): Angular error.
+            err_deg (float, optional): 1sigma angular error [deg]
             name (str, optional): Name.
             utc (astropy.time.Time | None, optional): Transient time.
             logger (str, optional): Logger name. Defaults to "momenta".
@@ -75,7 +75,12 @@ class PointSource(Transient):
         self.distance = None
         self.redshift = None
 
-    def set_distance(self, distance):
+    def set_distance(self, distance: float):
+        """Set the distance (in Mpc)
+
+        Args:
+            distance (float): source distance in Mpc
+        """
         self.distance = distance
         self.redshift = momenta.utils.conversions.lumidistance_to_redshift(distance)
 
@@ -98,5 +103,7 @@ class PointSource(Transient):
             ddec = np.arcsin(np.sin(theta) * np.sin(phi))
             toys["ra"] = self.coords.ra.deg + np.rad2deg(dra)
             toys["dec"] = self.coords.dec.deg + np.rad2deg(ddec)
+            if self.distance:
+                toys["distance_scaling"] = momenta.utils.conversions.distance_scaling(self.distance, self.redshift) * np.ones_like(toys["ra"])
         toys["ipix"] = hp.ang2pix(nside, toys["ra"], toys["dec"], lonlat=True)
         return pd.DataFrame(data=toys).to_records(index=False)
