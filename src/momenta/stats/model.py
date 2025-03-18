@@ -22,57 +22,6 @@ from scipy.stats import norm, poisson
 from momenta.io import NuDetectorBase, Parameters, Stack, Transient
 
 
-def calculate_deterministics(samples, model):
-    """Calculate different deterministic quantities:
-    - eiso: total energy emitted in neutrinos assuming isotropic emission [in erg]
-    - etot: total energy emitted in neutrinos assuming model=parameters.jet and using `theta_jn` as jet orientation w.r.t. Earth [in erg]
-    - fnu: ratio between total energy in neutrinos `etot` and radiated energy in GW using `radiated_energy` [no units]
-    """
-    det = {}
-    itoys = samples["itoy"].astype(int)
-    nsamples = len(itoys)
-    distance_scaling = model.toys_src[itoys]["distance_scaling"] if "distance_scaling" in model.toys_src.dtype.names else np.nan*np.ones(nsamples)
-    energy_scaling = model.toys_src[itoys]["energy_scaling"] if "energy_scaling" in model.toys_src.dtype.names else np.nan*np.ones(nsamples)
-    viewing_angle = model.toys_src[itoys]["viewing_angle"] if "viewing_angle" in model.toys_src.dtype.names else np.nan*np.ones(nsamples)
-    if model.priornorm_var == "flux":
-        fluxnorms = np.array([samples[f"norm{i}"] for i in range(model.flux.ncomponents)])
-        for i in range(model.flux.ncomponents):
-            det[f"fluxnorm{i}"] = fluxnorms[i]
-        shapes = np.array([samples[f"flux{i}_{s}"] for i, c in enumerate(model.flux.components) for s in c.shapevar_names])
-        det["etot"] = np.empty(nsamples)
-        det["fnu"] = np.empty(nsamples)
-        for i in range(model.flux.ncomponents):
-            det[f"etot{i}"] = np.empty(nsamples)
-            det[f"fnu{i}"] = np.empty(nsamples)
-        for isample in range(nsamples):
-            model.flux.set_shapevars(shapes[:, isample] if len(shapes)>0 else [])
-            _etot = fluxnorms[:, isample] * model.flux.flux_to_etot(distance_scaling[isample], viewing_angle[isample])
-            _fnu = _etot / energy_scaling[isample]
-            det["etot"][isample], det["fnu"][isample] = np.sum(_etot), np.sum(_fnu)
-            for i in range(model.flux.ncomponents):
-                det[f"etot{i}"][isample] = _etot[i]
-                det[f"fnu{i}"][isample] = _fnu[i]
-    elif model.priornorm_var == "etot":
-        etotnorms = np.array([samples[f"norm{i}"] for i in range(model.flux.ncomponents)])
-        for i in range(model.flux.ncomponents):
-            det[f"etot{i}"] = etotnorms[i]
-        shapes = np.array([samples[f"flux{i}_{s}"] for i, c in enumerate(model.flux.components) for s in c.shapevar_names])
-        det["etot"] = np.sum(etotnorms, axis=0)
-        det["fnu"] = np.empty(nsamples)
-        for i in range(model.flux.ncomponents):
-            det[f"fluxnorm{i}"] = np.empty(nsamples)
-            det[f"fnu{i}"] = np.empty(nsamples)
-        for isample in range(nsamples):
-            model.flux.set_shapevars(shapes[:, isample] if len(shapes)>0 else [])
-            _fluxnorm = etotnorms[:, isample] * model.flux.etot_to_flux(distance_scaling[isample], viewing_angle[isample])
-            _fnu = etotnorms[:, isample] / energy_scaling[isample]
-            det["fnu"][isample] = np.sum(_fnu)
-            for i in range(model.flux.ncomponents):
-                det[f"fluxnorm{i}"][isample] = _fluxnorm[i]
-                det[f"fnu{i}"][isample] = _fnu[i]
-    return det
-
-
 class ModelOneSource:
     """Ultranest posterior model for a single source and set of observations."""
 
@@ -244,6 +193,72 @@ class ModelOneSource:
                 loglkl += np.sum(np.log(probs), axis=1)
         return loglkl
 
+    def calculate_deterministics(self, samples):
+        """Calculate different deterministic quantities:
+        - eiso: total energy emitted in neutrinos assuming isotropic emission [in erg]
+        - etot: total energy emitted in neutrinos assuming model=parameters.jet and using `theta_jn` as jet orientation w.r.t. Earth [in erg]
+        - fnu: ratio between total energy in neutrinos `etot` and radiated energy in GW using `radiated_energy` [no units]
+        """
+        det = {}
+        itoys = samples["itoy"].astype(int)
+        nsamples = len(itoys)
+        distance_scaling = self.toys_src[itoys]["distance_scaling"] if "distance_scaling" in self.toys_src.dtype.names else np.nan*np.ones(nsamples)
+        energy_scaling = self.toys_src[itoys]["energy_scaling"] if "energy_scaling" in self.toys_src.dtype.names else np.nan*np.ones(nsamples)
+        viewing_angle = self.toys_src[itoys]["viewing_angle"] if "viewing_angle" in self.toys_src.dtype.names else np.nan*np.ones(nsamples)
+        shapes = np.array([samples[f"flux{i}_{s}"] for i, c in enumerate(self.flux.components) for s in c.shapevar_names])
+        if self.priornorm_var == "flux":
+            fluxnorms = np.array([samples[f"norm{i}"] for i in range(self.flux.ncomponents)])
+            for i in range(self.flux.ncomponents):
+                det[f"fluxnorm{i}"] = fluxnorms[i]
+            det["etot"] = np.empty(nsamples)
+            det["fnu"] = np.empty(nsamples)
+            for i in range(self.flux.ncomponents):
+                det[f"etot{i}"] = np.empty(nsamples)
+                det[f"fnu{i}"] = np.empty(nsamples)
+            for isample in range(nsamples):
+                self.flux.set_shapevars(shapes[:, isample] if len(shapes)>0 else [])
+                _etot = fluxnorms[:, isample] * self.flux.flux_to_etot(distance_scaling[isample], viewing_angle[isample])
+                _fnu = _etot / energy_scaling[isample]
+                det["etot"][isample], det["fnu"][isample] = np.sum(_etot), np.sum(_fnu)
+                for i in range(self.flux.ncomponents):
+                    det[f"etot{i}"][isample] = _etot[i]
+                    det[f"fnu{i}"][isample] = _fnu[i]
+        elif self.priornorm_var == "etot":
+            etotnorms = np.array([samples[f"norm{i}"] for i in range(self.flux.ncomponents)])
+            for i in range(self.flux.ncomponents):
+                det[f"etot{i}"] = etotnorms[i]
+            det["etot"] = np.sum(etotnorms, axis=0)
+            det["fnu"] = np.empty(nsamples)
+            for i in range(self.flux.ncomponents):
+                det[f"fluxnorm{i}"] = np.empty(nsamples)
+                det[f"fnu{i}"] = np.empty(nsamples)
+            for isample in range(nsamples):
+                self.flux.set_shapevars(shapes[:, isample] if len(shapes)>0 else [])
+                _fluxnorm = etotnorms[:, isample] * self.flux.etot_to_flux(distance_scaling[isample], viewing_angle[isample])
+                _fnu = etotnorms[:, isample] / energy_scaling[isample]
+                det["fnu"][isample] = np.sum(_fnu)
+                for i in range(self.flux.ncomponents):
+                    det[f"fluxnorm{i}"][isample] = _fluxnorm[i]
+                    det[f"fnu{i}"][isample] = _fnu[i]
+        elif self.priornorm_var == "fnu":
+            fnunorms = np.array([samples[f"norm{i}"] for i in range(self.flux.ncomponents)])
+            for i in range(self.flux.ncomponents):
+                det[f"fnu{i}"] = fnunorms[i]
+            det["fnu"] = np.sum(fnunorms, axis=0)
+            det["etot"] = np.empty(nsamples)
+            for i in range(self.flux.ncomponents):
+                det[f"fluxnorm{i}"] = np.empty(nsamples)
+                det[f"etot{i}"] = np.empty(nsamples)
+            for isample in range(nsamples):
+                self.flux.set_shapevars(shapes[:, isample] if len(shapes)>0 else [])
+                _etot = fnunorms[:, isample] * energy_scaling[isample]
+                _fluxnorm = _etot * self.flux.etot_to_flux(distance_scaling[isample], viewing_angle[isample])
+                det["etot"][isample] = np.sum(_etot)
+                for i in range(self.flux.ncomponents):
+                    det[f"fluxnorm{i}"][isample] = _fluxnorm[i]
+                    det[f"etot{i}"][isample] = _etot[i]
+        return det
+
 
 class ModelOneSource_BkgOnly:
     """Same model as `ModelOneSource` but only with the background (used for Bayes factor computation)."""
@@ -332,7 +347,8 @@ class ModelStacked:
 
     @property
     def ndims(self):
-        nd = self.flux.nparameters + 1  # flux (norms + shapes) + GW toy
+        nd = self.flux.nparameters  # flux (norms + shapes)
+        nd += self.nsources  # one index per source
         if self.bkg_variations:
             nd += int(np.sum(self.nsamples))  # background
         if self.acc_variations:
@@ -498,3 +514,18 @@ class ModelStacked:
                     loglkl += np.sum(np.log(probs), axis=1)
                 i += self.nsamples[isource]
         return loglkl
+    
+    
+    def calculate_deterministics(self, samples):
+        det = {}
+        if self.priornorm_var == "etot":
+            etotnorms = np.array([samples[f"norm{i}"] for i in range(self.flux.ncomponents)])
+            for i in range(self.flux.ncomponents):
+                det[f"etot{i}"] = etotnorms[i]
+            det["etot"] = np.sum(etotnorms, axis=0)
+        if self.priornorm_var == "fnu":
+            fnunorms = np.array([samples[f"norm{i}"] for i in range(self.flux.ncomponents)])
+            for i in range(self.flux.ncomponents):
+                det[f"fnu{i}"] = fnunorms[i]
+            det["fnu"] = np.sum(fnunorms, axis=0)
+        return det

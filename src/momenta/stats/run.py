@@ -73,10 +73,18 @@ def run_ultranest(
     sampler = ultranest.ReactiveNestedSampler(model.param_names, model.loglike, model.prior, vectorized=True)
     result = sampler.run(show_status=False, viz_callback=False, dlogz=precision_dlogz, dKL=precision_dKL)
 
-    result["samples"] = {k: v for k, v in zip(model.param_names, result["samples"].transpose()) if k.startswith("flux") or k.startswith("norm") or k == "itoy"}
-    result["weighted_samples"]["points"] = {
-        k: v for k, v in zip(model.param_names, result["weighted_samples"]["points"].transpose()) if k.startswith("flux") or k.startswith("norm") or k == "itoy"
-    }
+    result["samples"] = {k: v for k, v in zip(model.param_names, result["samples"].transpose())}
+    result["samples"].update(model.calculate_deterministics(result["samples"]))
+    for k in list(result["samples"].keys()):
+        if k.startswith("norm"):
+            result["samples"].pop(k)
+    
+    result["weighted_samples"]["points"] = {k: v for k, v in zip(model.param_names, result["weighted_samples"]["points"].transpose())}
+    result["weighted_samples"]["points"].update(model.calculate_deterministics(result["weighted_samples"]["points"]))
+    for k in list(result["weighted_samples"]["points"].keys()):
+        if k.startswith("norm"):
+            result["weighted_samples"]["points"].pop(k)
+    
     return model, result
 
 
@@ -102,8 +110,16 @@ def run_ultranest_stack(
     sampler = ultranest.ReactiveNestedSampler(model.param_names, model.loglike, model.prior, vectorized=True)
     result = sampler.run(show_status=False, viz_callback=False, dlogz=precision_dlogz, dKL=precision_dKL)
 
-    result["samples"] = {k: v for k, v in zip(model.param_names, result["samples"].transpose()) if k.startswith("flux") or k.startswith("norm") or k == "itoy"}
-    result["weighted_samples"]["points"] = {
-        k: v for k, v in zip(model.param_names, result["weighted_samples"]["points"].transpose()) if k.startswith("flux") or k.startswith("norm") or k == "itoy"
-    }
+    result["samples"] = {k: v for k, v in zip(model.param_names, result["samples"].transpose())}
+    result["samples"].update(model.calculate_deterministics(result["samples"]))
+    for k in list(result["samples"].keys()):
+        if k.startswith("norm"):
+            result["samples"].pop(k)
+    
+    result["weighted_samples"]["points"] = {k: v for k, v in zip(model.param_names, result["weighted_samples"]["points"].transpose())}
+    result["weighted_samples"]["points"].update(model.calculate_deterministics(result["weighted_samples"]["points"]))
+    for k in list(result["weighted_samples"]["points"].keys()):
+        if k.startswith("norm"):
+            result["weighted_samples"]["points"].pop(k)
+            
     return model, result

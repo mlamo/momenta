@@ -374,7 +374,7 @@ class IsotropicBackground(AngularBackground):
     def __init__(self):
         super().__init__()
 
-    def __call__(self, evt, ra_src: float, dec_src: float, degrees_evt: bool = False):
+    def __call__(self, evt):
         return 1 / (4*np.pi)
     
     
