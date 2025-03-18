@@ -2,7 +2,7 @@ skymap_resolution: 8
 detector_systematics: 0
 
 analysis:
-  likelihood: poisson
+  likelihood: pointsource
   prior_normalisation:
     variable: etot
     type: flat-linear
