@@ -68,6 +68,11 @@ class Component(abc.ABC):
 
     def set_shapevars(self, shapes):
         self.shapevar_values = shapes
+        
+    def set_jet(self, jet: JetModelBase):
+        if not isinstance(jet, JetModelBase):
+            raise TypeError(f"The provided jet model {jet} is not of the proper type (should inherit from JetModelBase).")
+        self.jet = jet
 
     @abc.abstractmethod
     def evaluate(self, energy, time : float | None = None):
