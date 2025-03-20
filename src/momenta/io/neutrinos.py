@@ -300,13 +300,14 @@ class NuSample:
             psig *= self._pdfs["signal"]["ang"](ev, ra_src, dec_src)
         if self._pdfs["signal"]["ene"] is not None:
             psig *= self._pdfs["signal"]["ene"](ev, fluxcomponent)
-        time_pdf = self._pdfs["signal"]["time"]
+        time_pdf = self._pdfs["signal"]["time"] # TODO retrieve this from fluxcomponent 
         if time_pdf is not None:
             if isinstance(time_pdf, irfs.PDFFluxDependent):
                 psig *= time_pdf(ev)#, fluxcomponent)
             else:
                 psig *= time_pdf(ev) 
         return psig
+        # This is the tricky part: 
 
 
 class NuDetectorBase(abc.ABC):

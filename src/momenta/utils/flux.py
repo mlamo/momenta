@@ -62,6 +62,13 @@ class Component(abc.ABC):
         self.shapevar_grid = [np.linspace(*s) for s in self.shapevar_boundaries]
         self.shapevar_values = [0.5 * (s[0] + s[1]) for s in self.shapevar_boundaries]
 
+    def get_shapevar_value(self, name):
+        """Obtain the value of the shapevar variable `name`.
+        """
+        idx = self.shapevar_names.index(name)
+        return self.shapevar_values[idx]
+        
+
     @property
     def nshapevars(self):
         return len(self.shapevar_names)
@@ -78,6 +85,7 @@ class Component(abc.ABC):
     def evaluate(self, energy, time : float | None = None):
         return None
 
+    # Flux here means same as fluence in some other contexts
     def flux_to_eiso(self, distance_scaling: float):
         def f(x):
             return self.evaluate(np.exp(x)) * (np.exp(x)) ** 2
@@ -118,16 +126,28 @@ class FixedPowerLaw(Component):
         return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy / self.eref, -self.shapefix_values[0]), 0)
 
 class TimeDependentFixedPowerLaw(FixedPowerLaw):
-    def __init__(self, func, emin, emax, gamma=2, eref=1):
+    def __init__(self,
+        time_pdf: scipy.stats.rv_continuous, # TODO or something that acts like it with same interface of .pdf, .cdf - use TimePDF base class?
+        emin: float, emax: float, gamma: float=2, eref: float=1,
+        loc_range = (-1, 1, 20), scale_range = (0.1, 10, 20), # get these from PDF to be generic?
+        ):
         super().__init__(emin, emax, gamma, eref)
-        self.func = func
+        self.time_pdf = time_pdf
+        self.shapevar_names = ["loc", "scale"] # get these from PDF to be generic? or fixed interface for
+        self.shapevar_boundaries = np.array([[[*loc_range]], [*scale_range]]) 
+        self.init_shapevars() # sets self.shapevar_grid for the IRFs
+        # self.grid # an interpolator used by PDF classes
 
-    def evaluate(self, energy, time : float | None = None):
+    def evaluate(self, energy, dt : float | None = None):
         fluence = super().evaluate(energy)
         if time is None:
             return fluence
         else:
-            return fluence * self.func(time)
+            return fluence * self.time_pdf.pdf(dt, loc=self.get_shapevar_value("loc"), scale=self.get_shapevar_value("scale"))
+    # we can generally do an analytical integral of dlivetime/dt x P(t)
+    # evaluating the acceptance for this component on the Aeff should only take energy
+# TODO flux component needs to keep track of time PDF parameters
+# 
 # still want an Eiso that is independent of time
 # in new architecture, parameters are component Eiso (by default independent when combined in a standard Flux)
 # TODO make other Flux that allows correlation

@@ -30,6 +30,42 @@ from typing import Callable, Iterable
 
 from momenta.utils.flux import Component
 
+# TODO add methods here to correct also background PDF acceptance
+# an can have compute scaling factors (for each component and BG) once
+# then apply to both acceptance and PDF norm
+# and default value of 1 if no time dep
+# might not even need the separate Acceptance/Aeff class if it's a default factor
+class Livetime:
+    """Class to store the livetime pattern of a dataset and evaluate the acceptance to a time PDF.
+    """
+    # TODO should this class not live with datasets, or in momenta-icecube?
+    def __init__(self, grl):
+        """Init with Skylab-compatible GRL: an array with with fields start and stop in MJD.
+        (run, livetime, events are typically also available.)
+        """
+        # TODO put this in a class
+        self.grl = grl
+    
+    def compute_acceptance(self, fluxcomponent: Component, t0: astropy.time.Time):
+        """Evaluate the signal acceptance factor int dlivetime/dt P(t)
+        taking P(t) = fluxcomponent.pdf(t - t0)
+        """
+        # TODO ensure time PDFs are in seconds
+        # NB: this assumes theoretical LCs taken as templates relative to a known transient
+        # Covering the case of a LC defined on the same axis as the data is... possible?
+        # the same t0 defines the dt of the events, i.e. upon which time PDFs will be evaluated.
+        # TODO this is very inefficient as we are dealing with short transients that are likely contained entirely within a run,
+        # for PDFs it works to set t0 = 0. 
+        cdf = fluxcomponent.time_pdf.cdf
+        run_start = astropy.time.Time(runs['start'], format='mjd')
+        run_stop = astropy.time.Time(runs['stop'], format='mjd')
+        # just like in skylab.temporal_models:
+        integral = (cdf((run_stop - t0).sec) - cdf((run_start - t0).sec)).sum()
+        return integral
+    # TODO add caching - do not want to re-evaluate, and it factorizes
+    # that should be indexed by the shapevar stored in the Component class
+
+# at some point will need background time PDF interpret it as gaps or 
 
 def angular_distance(ra1: np.ndarray, dec1: np.ndarray, ra2: np.ndarray, dec2: np.ndarray, degrees1=False, degrees2=False):
     if degrees1:
@@ -56,7 +92,7 @@ class EffectiveAreaBase:
         """Evaluate the effective area for a given energy, pixel index, and skymap resolution."""
         return 0*self._scaling_factor
 
-    def _compute_acceptance(self, fluxcomponent: Component, ipix: int, nside: int):
+    def _compute_acceptance(self, fluxcomponent: Component, ipix: int, nside: int): # ipix should be joined by t0
         """Compute the acceptance integrating the effective area x flux in log scale between emin and emax.
         Only used internally by `compute_acceptance_map`, may be overriden in a inheriting class."""
 
@@ -68,6 +104,7 @@ class EffectiveAreaBase:
     def compute_acceptance_map(self, fluxcomponent: Component, nside: int):
         """Compute the acceptance map for a given flux component, iterating over all pixels."""
         return np.array([self._compute_acceptance(fluxcomponent, ipix, nside) for ipix in range(hp.nside2npix(nside))])
+    # TODO can this not be made more efficient?
 
     def compute_acceptance_maps(self, fluxcomponents: list[Component], nside: int):
         """Compute the acceptance maps for a list of flux components, iterating over all components and pixels.
@@ -118,7 +155,34 @@ class EffectiveAreaBase:
     def __rmul__(self, factor: float):
         return self.__mul__(factor)
 
+class TimeAcceptance(EffectiveAreaBase):
+    """Class providing the same interface as an effective area,
+    to compute the portion of a flux component's time PDF accepted by a detector's livetime.
+    This is for flux components where the spectrum and time PDF factorizes.
+    Allows to use caching separately and only multiply the results.
+    """
+    # TODO general solution would mean F(t, E).
+    def __init__(self, livetime: Livetime, aeff: EffectiveAreaBase):
+        """_summary_
 
+        Args:
+            livetime (Livetime): _description_
+            aeff (EffectiveAreaBase): _description_
+        """
+        self.livetime = livetime
+        self.aeff = aeff
+    
+    def _compute_acceptance(self, fluxcomponent: Component, ipix: int, nside: int, t0: astropy.time.Time): # TODO: t0 will propagate into model loglike. Use default value.
+        energy_acceptance = self.aeff._compute_acceptance(fluxcomponent, ipix=ipix, nside=nside)
+        time_acceptance = self.livetime._compute_acceptance(fluxcomponent, t0=t0)
+        return energy_acceptance * time_acceptance
+
+    # TODO can we keep the public methods, compute_acceptance(_map)? probably
+    # TODO cover the case where you have events in a gap for some reason... 
+    # TODO in the LLH, the normalization must be over livetime and not time.
+
+
+# TODO how you implement in the LLH determines whether you can use this integrated acceptance, or need Acceptance(t)
 
 class EffectiveAreaAllSky(EffectiveAreaBase):
 
@@ -147,7 +211,6 @@ class EffectiveAreaAllSky(EffectiveAreaBase):
         acc = self._compute_acceptance(fluxcomponent, 0, nside) * np.ones(hp.nside2npix(nside))
         return acc
 
-
 class EffectiveAreaDeclinationDep(EffectiveAreaBase):
 
     def __init__(self):
@@ -172,7 +235,6 @@ class EffectiveAreaDeclinationDep(EffectiveAreaBase):
         ipix = np.arange(hp.nside2npix(nside))
         _, dec = hp.pix2ang(nside, ipix, lonlat=True)
         return dec
-
 
 class EffectiveAreaAltitudeDep(EffectiveAreaBase):
 
@@ -287,7 +349,7 @@ class PDFFluxDependent(PDFBase):
                 return func(evt, **kwargs)
 
             return RegularGridInterpolator(fluxcomponent.shapevar_grid, np.vectorize(f)(pdfs))(fluxcomponent.shapevar_values)
-
+    # HERE: retrieve time PDF from flux component
 
 class EnergySignal(PDFFluxDependent):
     """The standard energy signal PDF is a function f(ra,dec,E,flux)."""
@@ -378,6 +440,7 @@ class IsotropicBackground(AngularBackground):
         return 1 / (4*np.pi)
     
     
+# TODO this example is not ok. should take from flux component.
 class TimeBoxSignal(TimeSignal):
     """A common time signal PDF is 1/dt for t0 <= t < t0+dt and 0 otherwise."""
 
@@ -386,6 +449,9 @@ class TimeBoxSignal(TimeSignal):
         self.t0 = t0
         self.sigma_t = sigma_t
 
+    def func(self, dt):
+        return 1 / self.sigma_t * ((dt >= self.t0) & (dt < self.t0 + self.sigma_t))
+
     def __call__(self, evt, t0: float | None = None, sigma_t: float | None = None):
         t0 = self.t0 if t0 is None else t0
         sigma_t = self.sigma_t if sigma_t is None else sigma_t
@@ -393,12 +459,15 @@ class TimeBoxSignal(TimeSignal):
 
 
 class TimeGausSignal(TimeSignal):
-    """A commin time signal PDF is a normal distribution centered on t0."""
+    """A common time signal PDF is a normal distribution centered on t0."""
 
     def __init__(self, t0: float | None = None, sigma_t: float | None = None):
         super().__init__()
         self.t0 = t0
         self.sigma_t = sigma_t
+
+    def func(self, dt):
+        return norm.pdf(dt, loc=self.t0, scale=self.sigma_t)
 
     def __call__(self, evt, t0: float | None = None, sigma_t: float | None = None):
         t0 = self.t0 if t0 is None else t0
