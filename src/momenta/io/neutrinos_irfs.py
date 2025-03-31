@@ -309,21 +309,6 @@ class AngularSignal(PDFBase):
         return self.func(dpsi, evt.energy)
 
 
-class VonMisesSignal(AngularSignal):
-    """A common angular signal PDF is Von Mises distribution f = VM(dpsi, sigma)."""
-
-    def __init__(self):
-        super().__init__()
-
-    def __call__(self, evt, ra_src: float, dec_src: float, degrees_evt: bool = False):
-        dpsi = angular_distance(evt.ra, evt.dec, ra_src, dec_src, degrees1=degrees_evt, degrees2=True)
-        if evt.sigma > np.radians(7):
-            kappa = 1.0 / evt.sigma**2
-            return kappa * np.exp(kappa * np.cos(dpsi)) / (4 * np.pi * np.sinh(kappa))
-        else:
-            return 1 / (2 * np.pi * evt.sigma**2) * np.exp(-((dpsi / evt.sigma) ** 2) / 2)
-
-
 class EnergyBackground(PDFBase):
     """The standard energy background PDF is a function f(ra,dec,E)."""
 
@@ -357,6 +342,42 @@ class TimeSignal(PDFFluxDependent):
         return self.func(evt.dt)
 
 
+class TimeBackground(PDFBase):
+    """The standard time background PDF is an uniform function f(deltaT) = 1/timewindow."""
+
+    def __init__(self, timewindow_length: float):
+        super().__init__()
+        self.timewindow_length = timewindow_length
+
+    def __call__(self, evt):
+        return 1 / self.timewindow_length
+
+
+class VonMisesSignal(AngularSignal):
+    """A common angular signal PDF is Von Mises distribution f = VM(dpsi, sigma)."""
+
+    def __init__(self):
+        super().__init__()
+
+    def __call__(self, evt, ra_src: float, dec_src: float, degrees_evt: bool = False):
+        dpsi = angular_distance(evt.ra, evt.dec, ra_src, dec_src, degrees1=degrees_evt, degrees2=True)
+        if evt.sigma > np.radians(7):
+            kappa = 1.0 / evt.sigma**2
+            return kappa * np.exp(kappa * np.cos(dpsi)) / (4 * np.pi * np.sinh(kappa))
+        else:
+            return 1 / (2 * np.pi * evt.sigma**2) * np.exp(-((dpsi / evt.sigma) ** 2) / 2)
+
+
+class IsotropicBackground(AngularBackground):
+    """A very simple background PDF which is uniform on the sky."""
+
+    def __init__(self):
+        super().__init__()
+
+    def __call__(self, evt):
+        return 1 / (4*np.pi)
+    
+    
 class TimeBoxSignal(TimeSignal):
     """A common time signal PDF is 1/dt for t0 <= t < t0+dt and 0 otherwise."""
 
@@ -383,14 +404,3 @@ class TimeGausSignal(TimeSignal):
         t0 = self.t0 if t0 is None else t0
         sigma_t = self.sigma_t if sigma_t is None else sigma_t
         return norm.pdf(evt.dt, loc=t0, scale=sigma_t)
-
-
-class TimeBackground(PDFBase):
-    """The standard time background PDF is an uniform function f(deltaT) = 1/timewindow."""
-
-    def __init__(self, timewindow_length: float):
-        super().__init__()
-        self.timewindow_length = timewindow_length
-
-    def __call__(self, evt):
-        return 1 / self.timewindow_length

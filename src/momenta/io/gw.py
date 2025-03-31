@@ -232,6 +232,8 @@ class _GWSamples:
         """Prepare GW toys from posterior samples."""
         variables_to_get = ["ra", "dec", "luminosity_distance", "redshift", "radiated_energy", "theta_jn"]
         toys = self.get_variables(*variables_to_get)
+        toys["energy_scaling"] = toys.pop("radiated_energy") * momenta.utils.conversions.solarmass_to_erg
+        toys["vieving_angle"] = toys.pop("theta_jn")
         toys["ipix"] = hp.ang2pix(nside, toys["ra"], toys["dec"], lonlat=True)
         return toys
 
