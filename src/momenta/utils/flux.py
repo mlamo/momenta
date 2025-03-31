@@ -20,6 +20,8 @@ import numpy as np
 from functools import partial
 from scipy.integrate import quad
 
+from momenta.utils.conversions import JetModelBase, JetIsotropic
+
 
 class Component(abc.ABC):
 
@@ -35,6 +37,8 @@ class Component(abc.ABC):
         self.shapevar_values = []
         self.shapevar_boundaries = []
         self.shapevar_grid = []
+        # jet structure
+        self.jet = JetIsotropic()
 
     def __str__(self):
         s = [f"{type(self).__name__}"]
@@ -64,20 +68,41 @@ class Component(abc.ABC):
 
     def set_shapevars(self, shapes):
         self.shapevar_values = shapes
+        
+    def set_jet(self, jet: JetModelBase):
+        if not isinstance(jet, JetModelBase):
+            raise TypeError(f"The provided jet model {jet} is not of the proper type (should inherit from JetModelBase).")
+        self.jet = jet
 
     @abc.abstractmethod
     def evaluate(self, energy):
         return None
 
-    def flux_to_eiso(self, distance_scaling):
+    def flux_to_eiso(self, distance_scaling: float):
         def f(x):
             return self.evaluate(np.exp(x)) * (np.exp(x)) ** 2
 
         integration = quad(f, np.log(self.emin), np.log(self.emax), limit=100)[0]
         return distance_scaling * integration
 
+    def eiso_to_flux(self, distance_scaling: float):
+        return 1/self.flux_to_eiso(distance_scaling)
+    
+    def eiso_to_etot(self, viewing_angle: float):
+        return self.jet.eiso_to_etot(viewing_angle)
+    
+    def etot_to_eiso(self, viewing_angle: float):
+        return 1/self.eiso_to_etot(viewing_angle)
+    
+    def flux_to_etot(self, distance_scaling: float, viewing_angle: float):
+        return self.flux_to_eiso(distance_scaling) * self.eiso_to_etot(viewing_angle)
+    
+    def etot_to_flux(self, distance_scaling: float, viewing_angle: float):
+        return self.etot_to_eiso(viewing_angle) * self.eiso_to_flux(distance_scaling)        
+    
     def prior_transform(self, x):
-        """Transform uniform parameters in [0, 1] to shape parameter space."""
+        """Transform uniform parameters in [0, 1] to shape parameter space following prior.
+        Default is uniform prior between 0 and 1."""
         return x
 
 
@@ -216,8 +241,11 @@ class FluxBase(abc.ABC):
     def evaluate(self, energy):
         return [c.evaluate(energy) for c in self.components]
 
-    def flux_to_eiso(self, distance_scaling):
-        return np.array([c.flux_to_eiso(distance_scaling) for c in self.components])
+    def flux_to_etot(self, distance_scaling: float, viewing_angle: float):
+        return np.array([c.flux_to_etot(distance_scaling, viewing_angle) for c in self.components])
+    
+    def etot_to_flux(self, distance_scaling: float, viewing_angle: float):
+        return 1 / self.flux_to_etot(distance_scaling, viewing_angle)
 
     def prior_transform(self, x):
         return np.concatenate([c.prior_transform(x[..., i - c.nshapevars : i]) for c, i in zip(self.components, self.shapevar_positions)], axis=-1)

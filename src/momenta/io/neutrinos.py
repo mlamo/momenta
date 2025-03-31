@@ -336,13 +336,14 @@ class NuDetectorBase(abc.ABC):
             required_type (optional): required type
         """
         validated = None
-        log = logging.getLogger("momenta")
         if isinstance(args, list):
-            validated = args
+            if len(args) == self.nsamples:            
+                validated = args
+            else:
+                raise ValueError(f"Receive a list {args} that does not match the number of samples ({self.nsamples})")
         else:
             if self.nsamples != 1:
                 raise ValueError(f'Received single argument {args} corresponding to {self.nsamples} samples')
-                log.info('Wrapping {args} in a list')
             else:
                 validated = [args]
         if required_type:
@@ -389,7 +390,7 @@ class NuDetector(NuDetectorBase):
         else:
             self.error_acceptance = 0
             self.error_acceptance_corr = 0
-        self.check_errors_validity()
+        self._check_errors_validity()
 
     def set_observations(self, nobserved: list, background: list):
         """Set observations for this detector in its samples.
@@ -420,13 +421,36 @@ class NuDetector(NuDetectorBase):
             RuntimeError: If more or fewer are provided than there are samples.
         """
         aeffs = self._validate_args(aeffs, required_type=irfs.EffectiveAreaBase)
-        if len(aeffs) != self.nsamples:
-            raise RuntimeError("[NuDetector] Incorrect size for aeffs as compared to number of samples.")
         for i, smp in enumerate(self.samples):
             smp.set_effective_area(aeffs[i])
+            
+    def set_events(self, events: list[list[NuEvent]]):
+        """Set the lists of observed events for all the samples.
 
+        Args:
+            events (list[list[NuEvent]]): Observed events in each sample.
 
-    def check_errors_validity(self):
+        Raises:
+            RuntimeError: If more or fewer are provided than there are samples.
+        """
+        events = self._validate_args(events, required_type=list)
+        for i, smp in enumerate(self.samples):
+            smp.set_events(events[i])
+            
+    def set_pdfs(self, pdfs: list[dict[str, irfs.PDFBase]]):
+        """Set the PDFs for all the samples.
+
+        Args:
+            events (list[list[NuEvent]]): Observed events in each sample.
+
+        Raises:
+            RuntimeError: If more or fewer are provided than there are samples.
+        """
+        pdfs = self._validate_args(pdfs, required_type=dict)
+        for i, smp in enumerate(self.samples):
+            smp.set_pdfs(**pdfs[i])
+            
+    def _check_errors_validity(self):
         self.error_acceptance = infer_uncertainties(self.error_acceptance, self.nsamples, correlation=self.error_acceptance_corr)
 
 
