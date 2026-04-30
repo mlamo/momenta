@@ -23,6 +23,7 @@ import numpy as np
 from copy import deepcopy
 
 from astropy.units import deg
+from astropy.time import Time
 from scipy.integrate import quad
 from scipy.interpolate import interp1d, RegularGridInterpolator
 from scipy.stats import norm
@@ -35,7 +36,25 @@ from momenta.utils.flux import Component
 # then apply to both acceptance and PDF norm
 # and default value of 1 if no time dep
 # might not even need the separate Acceptance/Aeff class if it's a default factor
-class Livetime:
+
+class LivetimeBase:
+    @abc.abstractmethod
+    def __init__(self, grl=None):
+        pass
+
+    @abc.abstractmethod
+    def get_acceptance(self, fluxcomponent: Component, t0: Time):
+        pass
+
+# to allow configuration of detectors that ignore livetime acceptance - i.e. preserving
+# behaviour without time dependence. Make this the default in some Detector.__init__ or so?
+class NoLivetime(LivetimeBase):
+    def __init__(self, grl=None):
+        pass
+    def get_acceptance(self, fluxcomponent: Component, t0: Time):
+        return 1
+
+class Livetime(LivetimeBase):
     """Class to store the livetime pattern of a dataset and evaluate the acceptance to a time PDF.
     """
     # TODO should this class not live with datasets, or in momenta-icecube?
@@ -46,7 +65,7 @@ class Livetime:
         # TODO put this in a class
         self.grl = grl
     
-    def compute_acceptance(self, fluxcomponent: Component, t0: astropy.time.Time):
+    def compute_acceptance(self, fluxcomponent: Component, t0: Time):
         """Evaluate the signal acceptance factor int dlivetime/dt P(t)
         taking P(t) = fluxcomponent.pdf(t - t0)
         """
@@ -64,6 +83,10 @@ class Livetime:
         return integral
     # TODO add caching - do not want to re-evaluate, and it factorizes
     # that should be indexed by the shapevar stored in the Component class
+    def get_acceptance(self, fluxcomponent: Component, t0: Time):
+        return self.compute_acceptance(fluxcomponent, t0)
+
+
 
 # at some point will need background time PDF interpret it as gaps or 
 
@@ -92,7 +115,7 @@ class EffectiveAreaBase:
         """Evaluate the effective area for a given energy, pixel index, and skymap resolution."""
         return 0*self._scaling_factor
 
-    def _compute_acceptance(self, fluxcomponent: Component, ipix: int, nside: int): # ipix should be joined by t0
+    def _compute_acceptance(self, fluxcomponent: Component, ipix: int, nside: int):#, t0: Time | None=None): # ipix should be joined by t0: can have priors on it... but that would be redundant with loc parameter
         """Compute the acceptance integrating the effective area x flux in log scale between emin and emax.
         Only used internally by `compute_acceptance_map`, may be overriden in a inheriting class."""
 
@@ -101,21 +124,23 @@ class EffectiveAreaBase:
 
         return quad(func, np.log(fluxcomponent.emin), np.log(fluxcomponent.emax), limit=500)[0]
 
-    def compute_acceptance_map(self, fluxcomponent: Component, nside: int):
+    # TODO this should also include t0 from the prior
+    def compute_acceptance_map(self, fluxcomponent: Component, nside: int):#, t0: Time | None=None):
         """Compute the acceptance map for a given flux component, iterating over all pixels."""
         return np.array([self._compute_acceptance(fluxcomponent, ipix, nside) for ipix in range(hp.nside2npix(nside))])
     # TODO can this not be made more efficient?
 
-    def compute_acceptance_maps(self, fluxcomponents: list[Component], nside: int):
+    def compute_acceptance_maps(self, fluxcomponents: list[Component], nfluxcomponentsside: int):#, t0: Time | None=None):
         """Compute the acceptance maps for a list of flux components, iterating over all components and pixels.
         May be overriden by a smarter implementation for specific cases where computation can be optimized."""
-        return [self.compute_acceptance_map(c, nside) for c in fluxcomponents]
+        return [self.compute_acceptance_map(c, nside) for c in ]
 
     def get_acceptance_map(self, fluxcomponent: Component, nside: int):
         """Get the acceptance for a given flux component.
         If the component `store` attribute is 'exact', it is retrieved from the `acceptances` dictionary (added there if not yet available).
         If the component `store` attribute is 'interpolate', the dictionary with the interpolation function (+inputs) is returned.
         """
+        # TODO 
         if fluxcomponent.store == "exact":
             if (str(fluxcomponent), nside) not in self._acceptances:
                 self._acceptances[(str(fluxcomponent), nside)] = self.compute_acceptance_map(fluxcomponent, nside)
@@ -133,7 +158,7 @@ class EffectiveAreaBase:
             return self._acceptances[(str(fluxcomponent), nside)]
         return self.compute_acceptance_map(fluxcomponent, nside)
 
-    def get_acceptance(self, fluxcomponent: Component, ipix: int, nside: int):
+    def get_acceptance(self, fluxcomponent: Component, ipix: int, nside: int, t0: Time):
         """Get the acceptance"""
         if fluxcomponent.store == "exact":
             return self.get_acceptance_map(fluxcomponent, nside)[ipix]
@@ -350,6 +375,7 @@ class PDFFluxDependent(PDFBase):
 
             return RegularGridInterpolator(fluxcomponent.shapevar_grid, np.vectorize(f)(pdfs))(fluxcomponent.shapevar_values)
     # HERE: retrieve time PDF from flux component
+    # self.time_pdf.pdf(dt, loc=self.get_shapevar_value("loc"), scale=self.get_shapevar_value("scale"))
 
 class EnergySignal(PDFFluxDependent):
     """The standard energy signal PDF is a function f(ra,dec,E,flux)."""
