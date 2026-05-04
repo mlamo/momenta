@@ -19,6 +19,9 @@ import abc
 import numpy as np
 from functools import partial
 from scipy.integrate import quad
+import scipy.stats as st
+from scipy import integrate, interpolate
+from astropy.time import Time
 
 from momenta.utils.conversions import JetModelBase, JetIsotropic
 
@@ -125,9 +128,60 @@ class FixedPowerLaw(Component):
     def evaluate(self, energy):
         return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy / self.eref, -self.shapefix_values[0]), 0)
 
+class SampledLightcurve(st.rv_continuous):
+    """A time PDF defined by interpolating a sampled light curve.
+
+    x: array
+        time points in MJD
+    y: array
+        flux points in arbitrary units
+    """
+    def __init__(self, x, y):
+        self.x = x
+        self.tmin = x.min()
+        self.tmax = x.max()
+        self.y = y/y.max() # regularize units for numerical purposes
+        # cumulative integral
+        cumulative = integrate.cumulative_simpson(y, x=x)
+        self.integral = cumulative[-1]
+        self.pdf_spline = interpolate.make_splrep(self.x, self.y/self.integral)
+        self.cdf_points = np.append(0, cumulative/self.integral)
+        self.cdf_spline = interpolate.make_splrep(self.x, self.cdf_points)
+        # reverse map in order to generate samples
+        self.map_spline = interpolate.make_splrep(self.cdf_points, self.x)
+
+    def _pdf(self, t):
+        if (self.tmin <= t) and (t <= self.tmax):
+            return self.pdf_spline()
+        else:
+            return 0
+    def _cdf(self, t):
+        if (t <= self.tmin):
+            return 0
+        elif (t >= self.tmax):
+            return 1
+        else:
+            return self.cdf_spline()
+        
+    def _ppf(self, cdf):
+        return self.map_spline(cdf)
+
+class BinnedLightcurve(st.rv_histogram):
+    """Define a time PDF from a binned light curve.
+
+    edges: array
+        bin edges in MJD
+    values: array
+        flux values in arbitrary units
+    """
+    def __init__(self, edges, values):
+        values /= values.max() # normalize for numerical purposes
+        return super().__init__((values, edges), density=True)
+
+
 class TimeDependentFixedPowerLaw(FixedPowerLaw):
     def __init__(self,
-        time_pdf: scipy.stats.rv_continuous, # TODO or something that acts like it with same interface of .pdf, .cdf - use TimePDF base class?
+        time_pdf: st.rv_continuous,
         emin: float, emax: float, gamma: float=2, eref: float=1,
         loc_range = (-1, 1, 20), scale_range = (0.1, 10, 20), # get these from PDF to be generic?
         ):
@@ -138,12 +192,12 @@ class TimeDependentFixedPowerLaw(FixedPowerLaw):
         self.init_shapevars() # sets self.shapevar_grid for the IRFs
         # self.grid # an interpolator used by PDF classes
 
-    def evaluate(self, energy, dt : float | None = None):
+    def evaluate(self, energy, time : Time | None = None):
         fluence = super().evaluate(energy)
         if time is None:
             return fluence
         else:
-            return fluence * self.time_pdf.pdf(dt, loc=self.get_shapevar_value("loc"), scale=self.get_shapevar_value("scale"))
+            return fluence * self.time_pdf.pdf(time.mjd, loc=self.get_shapevar_value("loc"), scale=self.get_shapevar_value("scale"))
     # we can generally do an analytical integral of dlivetime/dt x P(t)
     # evaluating the acceptance for this component on the Aeff should only take energy
 # TODO flux component needs to keep track of time PDF parameters
