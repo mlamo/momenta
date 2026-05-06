@@ -30,6 +30,7 @@ from scipy.stats import norm
 from typing import Callable, Iterable
 
 from momenta.utils.flux import Component
+from momenta.io.neutrinos import NuEvent
 
 # TODO add methods here to correct also background PDF acceptance
 # an can have compute scaling factors (for each component and BG) once
@@ -43,7 +44,7 @@ class LivetimeBase:
         pass
 
     @abc.abstractmethod
-    def get_acceptance(self, fluxcomponent: Component, t0: Time):
+    def get_acceptance(self, fluxcomponent: Component):
         pass
 
 # to allow configuration of detectors that ignore livetime acceptance - i.e. preserving
@@ -51,7 +52,7 @@ class LivetimeBase:
 class NoLivetime(LivetimeBase):
     def __init__(self, grl=None):
         pass
-    def get_acceptance(self, fluxcomponent: Component, t0: Time):
+    def get_acceptance(self, fluxcomponent: Component):
         return 1
 
 class Livetime(LivetimeBase):
@@ -135,10 +136,10 @@ class EffectiveAreaBase:
         return np.array([self._compute_acceptance(fluxcomponent, ipix, nside) for ipix in range(hp.nside2npix(nside))])
     # TODO can this not be made more efficient?
 
-    def compute_acceptance_maps(self, fluxcomponents: list[Component], nfluxcomponentsside: int):#, t0: Time | None=None):
+    def compute_acceptance_maps(self, fluxcomponents: list[Component], nside: int):#, t0: Time | None=None):
         """Compute the acceptance maps for a list of flux components, iterating over all components and pixels.
         May be overriden by a smarter implementation for specific cases where computation can be optimized."""
-        return [self.compute_acceptance_map(c, nside) for c in ]
+        return [self.compute_acceptance_map(c, nside) for c in fluxcomponents]
 
     def get_acceptance_map(self, fluxcomponent: Component, nside: int):
         """Get the acceptance for a given flux component.
@@ -379,8 +380,6 @@ class PDFFluxDependent(PDFBase):
                 return func(evt, **kwargs)
 
             return RegularGridInterpolator(fluxcomponent.shapevar_grid, np.vectorize(f)(pdfs))(fluxcomponent.shapevar_values)
-    # HERE: retrieve time PDF from flux component
-    # self.time_pdf.pdf(dt, loc=self.get_shapevar_value("loc"), scale=self.get_shapevar_value("scale"))
 
 class EnergySignal(PDFFluxDependent):
     """The standard energy signal PDF is a function f(ra,dec,E,flux)."""
@@ -424,15 +423,22 @@ class AngularBackground(PDFBase):
         return self.func(evt.ra, evt.dec, evt.energy)
 
 
-class TimeSignal(PDFFluxDependent):
-    """The standard time signal PDF is a function f(deltaT)."""
+class AbsoluteTimeSignal(PDFFluxDependent):
+    """Evaluate the time PDF of the flux component in absolute time, if it has one."""
 
-    def __init__(self, func: Callable = None):
+    def __init__(self):
         super().__init__()
-        self.func = func
+    
+    # NOTE __call__ can also take kwargs which are passed on to the PDF from get_pdf; that could be used for template parameters? 
+    def compute_pdf(self, fluxcomponent: Component):
+        # TODO can lambda's cause a problem here?
+        if "time_pdf" in fluxcomponent.shapefix_names:
+            def f(ev):
+                return fluxcomponent.time_pdf(ev.mjd)
+            return f
+        else:
+            return lambda ev: 1
 
-    def __call__(self, evt):
-        return self.func(evt.dt)
 
 
 class TimeBackground(PDFBase):
@@ -472,35 +478,33 @@ class IsotropicBackground(AngularBackground):
     
     
 # TODO this example is not ok. should take from flux component.
-class TimeBoxSignal(TimeSignal):
-    """A common time signal PDF is 1/dt for t0 <= t < t0+dt and 0 otherwise."""
+class TimeBoxSignal(PDFBase):
+    """A common time signal PDF is 1/dt for t0 <= t < t0+dt and 0 otherwise.
+    This is a generic template used with relative times.
+    """
 
     def __init__(self, t0: float | None = None, sigma_t: float | None = None):
         super().__init__()
         self.t0 = t0
         self.sigma_t = sigma_t
 
-    def func(self, dt):
-        return 1 / self.sigma_t * ((dt >= self.t0) & (dt < self.t0 + self.sigma_t))
-
-    def __call__(self, evt, t0: float | None = None, sigma_t: float | None = None):
-        t0 = self.t0 if t0 is None else t0
-        sigma_t = self.sigma_t if sigma_t is None else sigma_t
+    def __call__(self, evt):
+        t0 = self.t0
+        sigma_t = self.sigma_t
         return 1 / sigma_t * ((evt.dt >= t0) & (evt.dt < t0 + sigma_t))
 
 
-class TimeGausSignal(TimeSignal):
-    """A common time signal PDF is a normal distribution centered on t0."""
+class TimeGausSignal(PDFBase):
+    """A common time signal PDF is a normal distribution centered on t0.
+    This is a generic template used with relative times.
+    """
 
     def __init__(self, t0: float | None = None, sigma_t: float | None = None):
         super().__init__()
         self.t0 = t0
         self.sigma_t = sigma_t
-
-    def func(self, dt):
-        return norm.pdf(dt, loc=self.t0, scale=self.sigma_t)
-
-    def __call__(self, evt, t0: float | None = None, sigma_t: float | None = None):
-        t0 = self.t0 if t0 is None else t0
-        sigma_t = self.sigma_t if sigma_t is None else sigma_t
+    
+    def __call__(self, evt):
+        t0 = self.t0
+        sigma_t = self.sigma_t
         return norm.pdf(evt.dt, loc=t0, scale=sigma_t)
