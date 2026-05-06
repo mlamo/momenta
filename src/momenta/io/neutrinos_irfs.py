@@ -58,33 +58,38 @@ class Livetime(LivetimeBase):
     """Class to store the livetime pattern of a dataset and evaluate the acceptance to a time PDF.
     """
     # TODO should this class not live with datasets, or in momenta-icecube?
-    def __init__(self, grl):
+    # TODO this needs to include analysis time windows? be shifted relative to trigger?
+    def __init__(self, grl_file):
         """Init with Skylab-compatible GRL: an array with with fields start and stop in MJD.
         (run, livetime, events are typically also available.)
         """
         # TODO put this in a class
-        self.grl = grl
+        self.grl = np.load(grl_file)
     
-    def compute_acceptance(self, fluxcomponent: Component, t0: Time):
+    def compute_acceptance(self, fluxcomponent: Component):
         """Evaluate the signal acceptance factor int dlivetime/dt P(t)
-        taking P(t) = fluxcomponent.pdf(t - t0)
+        taking P(t) = fluxcomponent.pdf(t)
         """
         # TODO ensure time PDFs are in seconds
         # NB: this assumes theoretical LCs taken as templates relative to a known transient
         # Covering the case of a LC defined on the same axis as the data is... possible?
         # the same t0 defines the dt of the events, i.e. upon which time PDFs will be evaluated.
         # TODO this is very inefficient as we are dealing with short transients that are likely contained entirely within a run,
-        # for PDFs it works to set t0 = 0. 
+
+        # This is for a fixed PDF
+        # TODO handle case where fluxcomponent has no time PDF
+        
         cdf = fluxcomponent.time_pdf.cdf
-        run_start = astropy.time.Time(runs['start'], format='mjd')
-        run_stop = astropy.time.Time(runs['stop'], format='mjd')
+        run_start = self.grl['start']
+        run_stop = self.grl['stop']
         # just like in skylab.temporal_models:
-        integral = (cdf((run_stop - t0).sec) - cdf((run_start - t0).sec)).sum()
+        integral = (cdf(run_stop) - cdf(run_start)).sum()
         return integral
+    
     # TODO add caching - do not want to re-evaluate, and it factorizes
     # that should be indexed by the shapevar stored in the Component class
-    def get_acceptance(self, fluxcomponent: Component, t0: Time):
-        return self.compute_acceptance(fluxcomponent, t0)
+    def get_acceptance(self, fluxcomponent: Component):
+        return self.compute_acceptance(fluxcomponent)
 
 
 

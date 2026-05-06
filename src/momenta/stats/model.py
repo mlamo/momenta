@@ -165,7 +165,14 @@ class ModelOneSource:
                     c.set_shapevars(shapes[ipoint, ishape : ishape + c.nshapevars])
                     ishape += c.nshapevars
                 for isample, s in enumerate(self.detector.samples):
-                    accs[ipoint, iflux, isample] = s.effective_area.get_acceptance(c, toys[ipoint].ipix, self.parameters.nside)
+                    # include time factor here - must be 1 if no time-dep?
+                    # maybe not - in the end we want to convert to flux (not fluence)
+                    # and there is always some analysis time window
+                    # for the code it would be tidy if t0 is in the prior; then it's just one function call, always the same
+                    # and the livetime would still have to cache it where applicable (except if we don't care...)
+                    energy_acceptance = s.effective_area.get_acceptance(c, toys[ipoint].ipix)
+                    time_acceptance = s.livetime.get_acceptance(c)
+                    accs[ipoint, iflux, isample] = energy_acceptance * time_acceptance
         # LOG-LIKELIHOOD
         nsigs = facc[:, np.newaxis, :] * (fluxnorms[:, :, np.newaxis] * accs / 6)  # dims = (npoints, ncompflux, nsamples)
         nexps = nbkg + np.sum(nsigs, axis=1)  # dims = (npoints, nsamples)
@@ -483,7 +490,9 @@ class ModelStacked:
                 i = 0
                 for isource in range(self.nsources):
                     for isample, s in enumerate(self.detectors[isource].samples):
-                        accs[ipoint, iflux, i+isample] = s.effective_area.get_acceptance(c, toys[ipoint][isource].ipix, self.parameters.nside)
+                        energy_acceptance = s.effective_area.get_acceptance(c, toys[ipoint][isource].ipix, self.parameters.nside)
+                        time_acceptance = s.livetime.get_acceptance(c) # optional: t0 if that's part of it
+                        accs[ipoint, iflux, i+isample] = energy_acceptance * time_acceptance
                     i += self.nsamples[isource]
         # LOG-LIKELIHOOD
         nsigs = faccs[:, np.newaxis, :] * (fluxnorms * accs / 6)  # dims = (npoints, ncompflux, nsamples)
