@@ -170,6 +170,7 @@ class ModelOneSource:
                     # and there is always some analysis time window
                     # for the code it would be tidy if t0 is in the prior; then it's just one function call, always the same
                     # and the livetime would still have to cache it where applicable (except if we don't care...)
+                    # TODO figure this out!
                     energy_acceptance = s.effective_area.get_acceptance(c, toys[ipoint].ipix)
                     time_acceptance = s.livetime.get_acceptance(c)
                     accs[ipoint, iflux, isample] = energy_acceptance * time_acceptance

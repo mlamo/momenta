@@ -33,10 +33,11 @@ from momenta.utils.flux import Component
 from momenta.io.neutrinos import NuEvent
 
 # TODO add methods here to correct also background PDF acceptance
-# an can have compute scaling factors (for each component and BG) once
+# and can have compute scaling factors (for each component and BG) once
 # then apply to both acceptance and PDF norm
 # and default value of 1 if no time dep
 # might not even need the separate Acceptance/Aeff class if it's a default factor
+# current way of setting background estimate and PDF independently is not ideal
 
 class LivetimeBase:
     @abc.abstractmethod
@@ -72,13 +73,15 @@ class Livetime(LivetimeBase):
         taking P(t) = fluxcomponent.pdf(t)
         """
         # TODO ensure time PDFs are in seconds
+        # maybe better: ensure astropy.time.Time is used everywhere there's ambiguity so an accidental mix
+        # of MJD's e.g. in a Livetime and seconds e.g. in a Lightcurve does not cause problems.
         # NB: this assumes theoretical LCs taken as templates relative to a known transient
         # Covering the case of a LC defined on the same axis as the data is... possible?
         # the same t0 defines the dt of the events, i.e. upon which time PDFs will be evaluated.
         # TODO this is very inefficient as we are dealing with short transients that are likely contained entirely within a run,
 
         # This is for a fixed PDF
-        # TODO handle case where fluxcomponent has no time PDF
+        # TODO handle case where fluxcomponent has no time PDF -- not handled in model.
         
         cdf = fluxcomponent.time_pdf.cdf
         run_start = self.grl['start']
@@ -87,10 +90,14 @@ class Livetime(LivetimeBase):
         integral = (cdf(run_stop) - cdf(run_start)).sum()
         return integral
     
-    # TODO add caching - do not want to re-evaluate, and it factorizes
-    # that should be indexed by the shapevar stored in the Component class
     def get_acceptance(self, fluxcomponent: Component):
-        return self.compute_acceptance(fluxcomponent)
+        # TODO only cache when time-related parameters change -- if the component factorizes
+        cache_key = str(fluxcomponent)
+        # below is equivalent to effective area's caching when fluxcomponent.store == "exact"
+        # TODO handle case where interpolation is needed with component parameters?
+        if cache_key not in self._acceptances:
+            self._acceptances[cache_key] = self.compute_acceptance_map(fluxcomponent)
+            return self._acceptances[cache_key]
 
 
 
@@ -130,8 +137,8 @@ class EffectiveAreaBase:
 
         return quad(func, np.log(fluxcomponent.emin), np.log(fluxcomponent.emax), limit=500)[0]
 
-    # TODO this should also include t0 from the prior
-    def compute_acceptance_map(self, fluxcomponent: Component, nside: int):#, t0: Time | None=None):
+    
+    def compute_acceptance_map(self, fluxcomponent: Component, nside: int):
         """Compute the acceptance map for a given flux component, iterating over all pixels."""
         return np.array([self._compute_acceptance(fluxcomponent, ipix, nside) for ipix in range(hp.nside2npix(nside))])
     # TODO can this not be made more efficient?
@@ -442,9 +449,11 @@ class AbsoluteTimeSignal(PDFFluxDependent):
 
 
 class TimeBackground(PDFBase):
-    """The standard time background PDF is an uniform function f(deltaT) = 1/timewindow."""
+    """The standard time background PDF is an uniform function f(deltaT) = 1/timewindow.
+    Assuming all events passed to it are in the window, their time isn't needed.
+    """
 
-    def __init__(self, timewindow_length: float):
+    def __init__(self, timewindow_length: float): # or time window livetime!
         super().__init__()
         self.timewindow_length = timewindow_length
 

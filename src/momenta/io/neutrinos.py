@@ -283,6 +283,7 @@ class NuSample:
         self._pdfs["background"]["ang"] = bkg_ang
         self._pdfs["background"]["ene"] = bkg_ene
         self._pdfs["background"]["time"] = bkg_time
+        # TODO handle the correct normalization factors for the sample's livetime in this constructor
 
     def compute_background_probability(self, ev):
         pbkg = 1
@@ -300,7 +301,8 @@ class NuSample:
             psig *= self._pdfs["signal"]["ang"](ev, ra_src, dec_src)
         if self._pdfs["signal"]["ene"] is not None:
             psig *= self._pdfs["signal"]["ene"](ev, fluxcomponent)
-        time_pdf = self._pdfs["signal"]["time"] # TODO retrieve this from fluxcomponent 
+        time_pdf = self._pdfs["signal"]["time"]
+        # TODO: if we get rid of non-component TimeSignal's, this can simplify to only the first case
         if time_pdf is not None:
             if isinstance(time_pdf, irfs.PDFFluxDependent):
                 psig *= time_pdf(ev)#, fluxcomponent)
@@ -333,6 +335,7 @@ class NuDetectorBase(abc.ABC):
         for sam in self.samples:
             sam.validate()
 
+     # TODO does the livetime.get_acceptance of these NuSamples need to come into it? what's the definition?
     def get_acceptance_maps(self, fluxcomponent, nside):
         return [s.effective_area.get_acceptance_map(fluxcomponent, nside) for s in self.samples]
 

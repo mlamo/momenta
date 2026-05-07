@@ -25,7 +25,7 @@ from astropy.time import Time
 
 from momenta.utils.conversions import JetModelBase, JetIsotropic
 
-
+# TODO maybe include time pdf interface already in base class? then child class only needs a constructor that sets it and there's no if/else outside
 class Component(abc.ABC):
 
     def __init__(self, emin, emax, store="exact"):
@@ -96,7 +96,7 @@ class Component(abc.ABC):
         integration = quad(f, np.log(self.emin), np.log(self.emax), limit=100)[0]
         return distance_scaling * integration
 
-    def eiso_to_flux(self, distance_scaling: float):
+    def eiso_to_flux(self, distance_scaling: float): # TODO should this only be time integrated? as it says flux not fluence
         return 1/self.flux_to_eiso(distance_scaling)
     
     def eiso_to_etot(self, viewing_angle: float):
@@ -178,8 +178,9 @@ class BinnedLightcurve(st.rv_histogram):
         values /= values.max() # normalize for numerical purposes
         return super().__init__((values, edges), density=True)
 
-
-class TimeDependentFixedPowerLaw(FixedPowerLaw):
+# FIXME this component is a crutch to avoid adding general lightcurves with parameters into Component
+# in this case on an absolute time axis -- ideally would also unify that, else we get a n^3 proliferation of classes.
+class TimeDependentFixedPowerLaw(FixedPowerLaw): # FixedPowerLaw gives it self.store = "exact"
     def __init__(self,
         time_pdf: st.rv_continuous,
         emin: float, emax: float, gamma: float=2, eref: float=1,
