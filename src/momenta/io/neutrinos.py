@@ -167,6 +167,7 @@ class NuEvent:
         sigma: float = np.nan,
         altitude: float = np.nan,
         azimuth: float = np.nan,
+        mjd: float = np.nan,
     ):
         """Event is defined by:
         - dt = t(neutrino)-t(GW) [in seconds]
@@ -174,6 +175,7 @@ class NuEvent:
         - energy = reconstructed energy [in GeV]
         - sigma = uncertainty on reconstructed direction [in radians]
         - altitude/azimuth = reconstructed local directions [in radians]
+        - mjd (optional) = t(neutrino) as a Modified Julian Date
         """
         self.dt = dt
         self.ra = ra
@@ -182,6 +184,7 @@ class NuEvent:
         self.sigma = sigma
         self.altitude = altitude
         self.azimuth = azimuth
+        self.mjd = mjd
 
     def __repr__(self):
         r = f"Event(deltaT={self.dt:.0f} s, ra/dec={np.rad2deg(self.ra):.1f}/{np.rad2deg(self.dec):.1f} deg, energy={self.energy:.2g} GeV, "
@@ -204,13 +207,22 @@ class NuEvent:
     def coords(self):
         return astropy.coordinates.SkyCoord(ra=self.ra * rad, dec=self.dec * rad)
 
+    @property
+    def time(self):
+        # TODO can alternatively also derive dt this way if not given before?
+        if not np.isna(self.mjd):
+            return astropy.time.Time(self.mjd, format="mjd")
+        else:
+            return None
+
 
 class NuSample:
-    """Class to handle a given neutrino sample characterised by its name, observed events, expected background and PDFs."""
+    """Class to handle a given neutrino sample characterised by its name, observed events, effective area, livetime, expected background and PDFs."""
 
     def __init__(self, name: str | None = None):
         self.name = name
         self.effective_area = None
+        self.livetime = None
         self.nobserved = np.nan
         self.background = None
         self._events = None
@@ -225,9 +237,12 @@ class NuSample:
     def set_effective_area(self, aeff):
         self.effective_area = aeff
 
+    def set_livetime(self, livetime):
+        self.livetime = livetime
+
     def set_observations(self, nobserved: int, bkg: Background):
         self.nobserved = nobserved
-        self.background = bkg
+        self.background = bkg # TODO maybe from int dlivetime x rate, self.livetime
 
     def set_events(self, events: list[NuEvent]):
         assert len(events) == self.nobserved or events is None
