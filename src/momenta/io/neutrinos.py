@@ -266,7 +266,7 @@ class NuSample:
         self,
         sig_ang: irfs.AngularSignal | None = None,
         sig_ene: irfs.EnergySignal | None = None,
-        sig_time: irfs.TimeSignal | None = None,
+        sig_time: irfs.AbsoluteTimeSignal | irfs.RelativeTimeSignal | None = None,
         bkg_ang: irfs.AngularBackground | None = None,
         bkg_ene: irfs.EnergyBackground | None = None,
         bkg_time: irfs.TimeBackground | None = None,
@@ -305,11 +305,10 @@ class NuSample:
         # TODO: if we get rid of non-component TimeSignal's, this can simplify to only the first case
         if time_pdf is not None:
             if isinstance(time_pdf, irfs.PDFFluxDependent):
-                psig *= time_pdf(ev)#, fluxcomponent)
+                psig *= time_pdf(ev, fluxcomponent)
             else:
                 psig *= time_pdf(ev) 
         return psig
-        # This is the tricky part: 
 
 
 class NuDetectorBase(abc.ABC):

@@ -26,11 +26,10 @@ from astropy.units import deg
 from astropy.time import Time
 from scipy.integrate import quad
 from scipy.interpolate import interp1d, RegularGridInterpolator
-from scipy.stats import norm
+from scipy.stats import uniform, norm, rv_continuous
 from typing import Callable, Iterable
 
 from momenta.utils.flux import Component
-from momenta.io.neutrinos import NuEvent
 
 # TODO add methods here to correct also background PDF acceptance
 # and can have compute scaling factors (for each component and BG) once
@@ -41,11 +40,15 @@ from momenta.io.neutrinos import NuEvent
 
 class LivetimeBase:
     @abc.abstractmethod
-    def __init__(self, grl=None):
+    def __init__(self):
         pass
 
     @abc.abstractmethod
     def get_acceptance(self, fluxcomponent: Component):
+        pass
+
+    @abc.abstractmethod
+    def get_livetime(self, tmin: Time, tmax: Time):
         pass
 
 # to allow configuration of detectors that ignore livetime acceptance - i.e. preserving
@@ -56,17 +59,30 @@ class NoLivetime(LivetimeBase):
     def get_acceptance(self, fluxcomponent: Component):
         return 1
 
+    # FIXME is this the right thing? might replace some already existing thing with .background?
+    # or interface with neutrinos.Background classes
+    def get_livetime(self, tmin: Time, tmax: Time):
+        return (tmax - tmin).to("s")
+
 class Livetime(LivetimeBase):
     """Class to store the livetime pattern of a dataset and evaluate the acceptance to a time PDF.
     """
-    # TODO should this class not live with datasets, or in momenta-icecube?
-    # TODO this needs to include analysis time windows? be shifted relative to trigger?
-    def __init__(self, grl_file):
+    # TODO a way to evaluate this w.r.t. an analysis time window, or with dt (time relative to trigger)
+    def __init__(self,
+        grl_array: np.ndarray| None = None,
+        grl_file: str| None = None,
+        ):
         """Init with Skylab-compatible GRL: an array with with fields start and stop in MJD.
         (run, livetime, events are typically also available.)
         """
-        # TODO put this in a class
-        self.grl = np.load(grl_file)
+        # TODO maybe better if there was a class for this? but anyway will be loading/setting this in different ways
+        if grl_array:
+            self.grl = grl_array
+        elif grl_file:
+            self.grl = np.load(grl_file)
+        else:
+            raise ValueError("Livetime constructor needs either grl_array or grl_file, received neither.")
+        self.integral = (self.grl['stop'] - self.grl['start']).sum()
     
     def compute_acceptance(self, fluxcomponent: Component):
         """Evaluate the signal acceptance factor int dlivetime/dt P(t)
@@ -485,35 +501,30 @@ class IsotropicBackground(AngularBackground):
     def __call__(self, evt):
         return 1 / (4*np.pi)
     
+class RelativeTimeSignal(PDFBase):
+    """Evaluate a template time PDF in relative time.
+    """
+    def __init__(self, rv: rv_continuous):
+        super().__init__()
+        self.rv = rv
     
-# TODO this example is not ok. should take from flux component.
-class TimeBoxSignal(PDFBase):
+    def __call__(self, evt):
+        return self.rv.pdf(evt.dt)
+
+class TimeBoxSignal(RelativeTimeSignal):
     """A common time signal PDF is 1/dt for t0 <= t < t0+dt and 0 otherwise.
     This is a generic template used with relative times.
     """
 
     def __init__(self, t0: float | None = None, sigma_t: float | None = None):
-        super().__init__()
-        self.t0 = t0
-        self.sigma_t = sigma_t
+        rv = uniform(loc=t0, scale=sigma_t)
+        super().__init__(rv)
 
-    def __call__(self, evt):
-        t0 = self.t0
-        sigma_t = self.sigma_t
-        return 1 / sigma_t * ((evt.dt >= t0) & (evt.dt < t0 + sigma_t))
-
-
-class TimeGausSignal(PDFBase):
+class TimeGausSignal(RelativeTimeSignal):
     """A common time signal PDF is a normal distribution centered on t0.
     This is a generic template used with relative times.
     """
 
     def __init__(self, t0: float | None = None, sigma_t: float | None = None):
-        super().__init__()
-        self.t0 = t0
-        self.sigma_t = sigma_t
-    
-    def __call__(self, evt):
-        t0 = self.t0
-        sigma_t = self.sigma_t
-        return norm.pdf(evt.dt, loc=t0, scale=sigma_t)
+        rv = norm(loc=t0, scale=sigma_t)
+        super().__init__(rv)
