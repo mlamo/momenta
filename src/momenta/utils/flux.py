@@ -125,7 +125,7 @@ class FixedPowerLaw(Component):
         self.shapefix_names = ["gamma"]
         self.shapefix_values = [gamma]
 
-    def evaluate(self, energy):
+    def evaluate(self, energy, time: Time|None = None):
         return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy / self.eref, -self.shapefix_values[0]), 0)
 
 class SampledLightcurve(st.rv_continuous):
@@ -136,7 +136,8 @@ class SampledLightcurve(st.rv_continuous):
     y: array
         flux points in arbitrary units
     """
-    def __init__(self, x, y):
+    def __init__(self, time, flux):
+        x, y = time, flux
         self.x = x
         self.tmin = x.min()
         self.tmax = x.max()
@@ -184,12 +185,18 @@ class TimeDependentFixedPowerLaw(FixedPowerLaw): # FixedPowerLaw gives it self.s
     def __init__(self,
         time_pdf: st.rv_continuous,
         emin: float, emax: float, gamma: float=2, eref: float=1,
-        loc_range = (-1, 1, 20), scale_range = (0.1, 10, 20), # get these from PDF to be generic?
+        # if using parameters:
+        #loc_range = (-1, 1, 20), scale_range = (0.1, 10, 20), # get these from PDF to be generic?
         ):
         super().__init__(emin, emax, gamma, eref)
+        # Could also add parameters loc (offset) and scale (time scale) to the existing one, approx like this:
+        # (as this is with a fixed power law, no shapevar_... yet, only shapefix)
+        #self.shapevar_names += ["loc", "scale"] # get these from PDF to be generic? or fixed interface for
+        #self.shapevar_boundaries = np.array([[[*loc_range]], [*scale_range]]) 
         self.time_pdf = time_pdf
-        self.shapevar_names = ["loc", "scale"] # get these from PDF to be generic? or fixed interface for
-        self.shapevar_boundaries = np.array([[[*loc_range]], [*scale_range]]) 
+        # But for now this is fixed
+        self.shapefix_names += ["time_pdf"]
+        self.shapefix_values += [time_pdf]
         self.init_shapevars() # sets self.shapevar_grid for the IRFs
         # self.grid # an interpolator used by PDF classes
 
@@ -198,7 +205,10 @@ class TimeDependentFixedPowerLaw(FixedPowerLaw): # FixedPowerLaw gives it self.s
         if time is None:
             return fluence
         else:
-            return fluence * self.time_pdf.pdf(time.mjd, loc=self.get_shapevar_value("loc"), scale=self.get_shapevar_value("scale"))
+            # with variable PDF:
+            #return fluence * self.time_pdf.pdf(time.mjd, loc=self.get_shapevar_value("loc"), scale=self.get_shapevar_value("scale"))
+            # with constant PDF:
+            return fluence * self.time_pdf.pdf(time.mjd)
     # we can generally do an analytical integral of dlivetime/dt x P(t)
     # evaluating the acceptance for this component on the Aeff should only take energy
 # TODO flux component needs to keep track of time PDF parameters
@@ -221,7 +231,7 @@ class VariablePowerLaw(Component):
         self.init_shapevars()
         self.grid = np.vectorize(partial(FixedPowerLaw, self.emin, self.emax, eref=self.eref))(self.shapevar_grid[0])
 
-    def evaluate(self, energy):
+    def evaluate(self, energy, time: Time|None = None):
         return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy / self.eref, -self.shapevar_values[0]), 0)
 
     def prior_transform(self, x):
@@ -236,7 +246,7 @@ class FixedBrokenPowerLaw(Component):
         self.shapefix_values = [gamma1, gamma2, log10ebreak]
         self.shapefix_names = ["gamma1", "gamma2", "log(ebreak)"]
 
-    def evaluate(self, energy):
+    def evaluate(self, energy, time: Time|None = None):
         factor = (10 ** self.shapefix_values[2] / self.eref) ** (self.shapefix_values[1] - self.shapefix_values[0])
         f = np.where(
             np.log10(energy) < self.shapefix_values[2],
@@ -257,7 +267,7 @@ class VariableBrokenPowerLaw(FixedBrokenPowerLaw):
         self.init_shapevars()
         self.grid = np.vectorize(partial(FixedBrokenPowerLaw, self.emin, self.emax, eref=self.eref))(*np.meshgrid(*self.shapevar_grid))
 
-    def evaluate(self, energy):
+    def evaluate(self, energy, time: Time|None = None):
         factor = (10 ** (self.shapevar_values[2]) / self.eref) ** (self.shapevar_values[1] - self.shapevar_values[0])
         f = np.where(
             np.log10(energy) < self.shapevar_values[2],
@@ -283,7 +293,7 @@ class SemiVariableBrokenPowerLaw(FixedBrokenPowerLaw):
         self.init_shapevars()
         self.grid = np.vectorize(partial(FixedBrokenPowerLaw, self.emin, self.emax, gamma1=gamma1, eref=self.eref))(*np.meshgrid(*self.shapevar_grid))
 
-    def evaluate(self, energy):
+    def evaluate(self, energy, time: Time|None = None):
         factor = (10 ** (self.shapevar_values[2]) / self.eref) ** (self.shapevar_values[1] - self.shapevar_values[0])
         f = np.where(
             np.log10(energy) < self.shapevar_values[2],
@@ -331,8 +341,8 @@ class FluxBase(abc.ABC):
         for c, i in zip(self.components, self.shapevar_positions):
             c.set_shapevars(shapes[i - c.nshapevars : i])
 
-    def evaluate(self, energy):
-        return [c.evaluate(energy) for c in self.components]
+    def evaluate(self, energy, time: Time|None = None):
+        return [c.evaluate(energy, time) for c in self.components]
 
     def flux_to_etot(self, distance_scaling: float, viewing_angle: float):
         return np.array([c.flux_to_etot(distance_scaling, viewing_angle) for c in self.components])
@@ -362,3 +372,8 @@ class FluxVariableBrokenPowerLaw(FluxBase):
     def __init__(self, emin, emax, gamma_range=(1, 4, 16), log10ebreak_range=(3, 6, 7), eref=1):
         super().__init__()
         self.components = [VariableBrokenPowerLaw(emin, emax, gamma_range, log10ebreak_range, eref)]
+
+class FluxTimeDependentFixedPowerLaw(FixedPowerLaw):
+    def __init__(self, time_pdf, emin, emax, gamma: float = 2, eref: float = 1):
+        super().__init__()
+        self.components = [TimeDependentFixedPowerLaw(time_pdf, emin, emax, gamma=gamma, eref=eref)]
