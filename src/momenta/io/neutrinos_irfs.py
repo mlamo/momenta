@@ -64,6 +64,7 @@ class NoLivetime(LivetimeBase):
     def get_livetime(self, tmin: Time, tmax: Time):
         return (tmax - tmin).to("s")
 
+# TODO cover the case where you have events in a gap for some reason - where should this be handled?
 class Livetime(LivetimeBase):
     """Class to store the livetime pattern of a dataset and evaluate the acceptance to a time PDF.
     """
@@ -169,7 +170,6 @@ class EffectiveAreaBase:
         If the component `store` attribute is 'exact', it is retrieved from the `acceptances` dictionary (added there if not yet available).
         If the component `store` attribute is 'interpolate', the dictionary with the interpolation function (+inputs) is returned.
         """
-        # TODO 
         if fluxcomponent.store == "exact":
             if (str(fluxcomponent), nside) not in self._acceptances:
                 self._acceptances[(str(fluxcomponent), nside)] = self.compute_acceptance_map(fluxcomponent, nside)
@@ -187,7 +187,7 @@ class EffectiveAreaBase:
             return self._acceptances[(str(fluxcomponent), nside)]
         return self.compute_acceptance_map(fluxcomponent, nside)
 
-    def get_acceptance(self, fluxcomponent: Component, ipix: int, nside: int, t0: Time):
+    def get_acceptance(self, fluxcomponent: Component, ipix: int, nside: int): # could be joined by , t0: Time as something with priors
         """Get the acceptance"""
         if fluxcomponent.store == "exact":
             return self.get_acceptance_map(fluxcomponent, nside)[ipix]
@@ -208,33 +208,6 @@ class EffectiveAreaBase:
     
     def __rmul__(self, factor: float):
         return self.__mul__(factor)
-
-class TimeAcceptance(EffectiveAreaBase):
-    """Class providing the same interface as an effective area,
-    to compute the portion of a flux component's time PDF accepted by a detector's livetime.
-    This is for flux components where the spectrum and time PDF factorizes.
-    Allows to use caching separately and only multiply the results.
-    """
-    # TODO general solution would mean F(t, E).
-    def __init__(self, livetime: Livetime, aeff: EffectiveAreaBase):
-        """_summary_
-
-        Args:
-            livetime (Livetime): _description_
-            aeff (EffectiveAreaBase): _description_
-        """
-        self.livetime = livetime
-        self.aeff = aeff
-    
-    def _compute_acceptance(self, fluxcomponent: Component, ipix: int, nside: int, t0: astropy.time.Time): # TODO: t0 will propagate into model loglike. Use default value.
-        energy_acceptance = self.aeff._compute_acceptance(fluxcomponent, ipix=ipix, nside=nside)
-        time_acceptance = self.livetime._compute_acceptance(fluxcomponent, t0=t0)
-        return energy_acceptance * time_acceptance
-
-    # TODO can we keep the public methods, compute_acceptance(_map)? probably
-    # TODO cover the case where you have events in a gap for some reason... 
-    # TODO in the LLH, the normalization must be over livetime and not time.
-
 
 # TODO how you implement in the LLH determines whether you can use this integrated acceptance, or need Acceptance(t)
 
@@ -457,7 +430,7 @@ class AbsoluteTimeSignal(PDFFluxDependent):
         # TODO can lambda's cause a problem here?
         if "time_pdf" in fluxcomponent.shapefix_names:
             def f(ev):
-                return fluxcomponent.time_pdf(ev.mjd)
+                return fluxcomponent.time_pdf.pdf(ev.mjd)
             return f
         else:
             return lambda ev: 1

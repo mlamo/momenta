@@ -210,7 +210,7 @@ class NuEvent:
     @property
     def time(self):
         # TODO can alternatively also derive dt this way if not given before?
-        if not np.isna(self.mjd):
+        if not np.isnan(self.mjd):
             return astropy.time.Time(self.mjd, format="mjd")
         else:
             return None
@@ -222,7 +222,7 @@ class NuSample:
     def __init__(self, name: str | None = None):
         self.name = name
         self.effective_area = None
-        self.livetime = None
+        self.livetime = irfs.NoLivetime() # assume complete coverage if no livetime is set later
         self.nobserved = np.nan
         self.background = None
         self._events = None
@@ -299,6 +299,11 @@ class NuSample:
         self._pdfs["background"]["ene"] = bkg_ene
         self._pdfs["background"]["time"] = bkg_time
         # TODO handle the correct normalization factors for the sample's livetime in this constructor
+        # FIXME no we can not! does not know about the flux component yet!! so in which constructor? the PDF's? how does it know about livetime?
+        # isinstance(sig_time, irfs.PDFFluxDependent):
+        #     acceptance_ratio = self.livetime.get_acceptance(sig_time)
+        # elif isinstance(sig_time, irfs.PDFBase):
+        #     acceptance_ratio = self.livetime.get_acceptance()
 
     def compute_background_probability(self, ev):
         pbkg = 1
@@ -449,6 +454,20 @@ class NuDetector(NuDetectorBase):
         aeffs = self._validate_args(aeffs, required_type=irfs.EffectiveAreaBase)
         for i, smp in enumerate(self.samples):
             smp.set_effective_area(aeffs[i])
+
+    def set_livetimes(self, livetimes: list[irfs.LivetimeBase]):
+        """Set the livetimes of the detector's respective samples.
+
+        Args:
+            livetimes (list[irfs.LivetimeBase])
+        
+        Raises:
+            RuntimeError: If more or fewer are provided than there are samples.
+            TypeError: If any of them are of the wrong type.
+        """
+        livetimes = self._validate_args(livetimes, required_type=irfs.LivetimeBase)
+        for i, smp in enumerate(self.samples):
+            smp.set_livetime(livetimes[i])
             
     def set_events(self, events: list[list[NuEvent]]):
         """Set the lists of observed events for all the samples.

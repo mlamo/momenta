@@ -373,7 +373,7 @@ class FluxVariableBrokenPowerLaw(FluxBase):
         super().__init__()
         self.components = [VariableBrokenPowerLaw(emin, emax, gamma_range, log10ebreak_range, eref)]
 
-class FluxTimeDependentFixedPowerLaw(FixedPowerLaw):
+class FluxTimeDependentFixedPowerLaw(FluxBase):
     def __init__(self, time_pdf, emin, emax, gamma: float = 2, eref: float = 1):
         super().__init__()
         self.components = [TimeDependentFixedPowerLaw(time_pdf, emin, emax, gamma=gamma, eref=eref)]
