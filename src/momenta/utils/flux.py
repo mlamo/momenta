@@ -117,7 +117,41 @@ class Component(abc.ABC):
         return x
 
 
-class FixedPowerLaw(Component):
+class FactorizedComponent(Component):
+    """Component which factorizes into a spectrum and a lightcurve.
+    """
+    
+    def set_lightcurve(self, lightcurve: st.rv_continuous):
+        self.lightcurve = lightcurve
+        self.shapefix_names += ["lightcurve"]
+        self.shapefix_values += [lightcurve]
+        # Could also add parameters loc (offset) and scale (time scale) to the existing one, approx like this:
+        # (as this is with a fixed power law, no shapevar_... yet, only shapefix)
+        #self.shapevar_names += ["loc", "scale"] # get these from PDF to be generic? or fixed interface for
+        #self.shapevar_boundaries = np.array([[[*loc_range]], [*scale_range]]) 
+        #self.init_shapevars()
+        
+    def evaluate(self, energy, time: Time|None = None):
+        fluence = self.spectrum(energy)
+        if time is None:
+            return fluence
+        else:
+            # with variable PDF:
+            #return fluence * self.lightcurve.pdf(time.mjd, loc=self.get_shapevar_value("loc"), scale=self.get_shapevar_value("scale"))
+            # with constant PDF:
+            return fluence * self.lightcurve.pdf(time.mjd)
+    # we can generally do an analytical integral of dlivetime/dt x P(t)
+    # evaluating the acceptance for this component on the Aeff should only take energy
+# TODO flux component needs to keep track of time PDF parameters
+# 
+# still want an Eiso that is independent of time
+# in new architecture, parameters are component Eiso (by default independent when combined in a standard Flux)
+# TODO make other Flux that allows correlation
+# needed for stacking, as Phi has a built-in d^2 factor from Eiso
+# not physical to include this in f_nu_i  = Etot/EGW or Etransient
+# but that is the place where you could e.g. have L^2 weighting
+
+class FixedPowerLaw(FactorizedComponent):
 
     def __init__(self, emin, emax, gamma=2, eref=1):
         super().__init__(emin=emin, emax=emax, store="exact")
@@ -125,7 +159,7 @@ class FixedPowerLaw(Component):
         self.shapefix_names = ["gamma"]
         self.shapefix_values = [gamma]
 
-    def evaluate(self, energy, time: Time|None = None):
+    def spectrum(self, energy):
         return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy / self.eref, -self.shapefix_values[0]), 0)
 
 class SampledLightcurve(st.rv_continuous):
@@ -179,49 +213,7 @@ class BinnedLightcurve(st.rv_histogram):
         values /= values.max() # normalize for numerical purposes
         return super().__init__((values, edges), density=True)
 
-# FIXME this component is a crutch to avoid adding general lightcurves with parameters into Component
-# in this case on an absolute time axis -- ideally would also unify that, else we get a n^3 proliferation of classes.
-class TimeDependentFixedPowerLaw(FixedPowerLaw): # FixedPowerLaw gives it self.store = "exact"
-    def __init__(self,
-        time_pdf: st.rv_continuous,
-        emin: float, emax: float, gamma: float=2, eref: float=1,
-        # if using parameters:
-        #loc_range = (-1, 1, 20), scale_range = (0.1, 10, 20), # get these from PDF to be generic?
-        ):
-        super().__init__(emin, emax, gamma, eref)
-        # Could also add parameters loc (offset) and scale (time scale) to the existing one, approx like this:
-        # (as this is with a fixed power law, no shapevar_... yet, only shapefix)
-        #self.shapevar_names += ["loc", "scale"] # get these from PDF to be generic? or fixed interface for
-        #self.shapevar_boundaries = np.array([[[*loc_range]], [*scale_range]]) 
-        self.time_pdf = time_pdf
-        # But for now this is fixed
-        self.shapefix_names += ["time_pdf"]
-        self.shapefix_values += [time_pdf]
-        self.init_shapevars() # sets self.shapevar_grid for the IRFs
-        # self.grid # an interpolator used by PDF classes
-
-    def evaluate(self, energy, time : Time | None = None):
-        fluence = super().evaluate(energy)
-        if time is None:
-            return fluence
-        else:
-            # with variable PDF:
-            #return fluence * self.time_pdf.pdf(time.mjd, loc=self.get_shapevar_value("loc"), scale=self.get_shapevar_value("scale"))
-            # with constant PDF:
-            return fluence * self.time_pdf.pdf(time.mjd)
-    # we can generally do an analytical integral of dlivetime/dt x P(t)
-    # evaluating the acceptance for this component on the Aeff should only take energy
-# TODO flux component needs to keep track of time PDF parameters
-# 
-# still want an Eiso that is independent of time
-# in new architecture, parameters are component Eiso (by default independent when combined in a standard Flux)
-# TODO make other Flux that allows correlation
-# needed for stacking, as Phi has a built-in d^2 factor from Eiso
-# not physical to include this in f_nu_i  = Etot/EGW or Etransient
-# but that is the place where you could e.g. have L^2 weighting
-
-
-class VariablePowerLaw(Component):
+class VariablePowerLaw(FactorizedComponent):
 
     def __init__(self, emin, emax, gamma_range=(1, 4, 16), eref=1):
         super().__init__(emin=emin, emax=emax, store="interpolate")
@@ -231,14 +223,14 @@ class VariablePowerLaw(Component):
         self.init_shapevars()
         self.grid = np.vectorize(partial(FixedPowerLaw, self.emin, self.emax, eref=self.eref))(self.shapevar_grid[0])
 
-    def evaluate(self, energy, time: Time|None = None):
+    def spectrum(self, energy):
         return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy / self.eref, -self.shapevar_values[0]), 0)
 
     def prior_transform(self, x):
         return self.shapevar_boundaries[0][0] + (self.shapevar_boundaries[0][1] - self.shapevar_boundaries[0][0]) * x
 
 
-class FixedBrokenPowerLaw(Component):
+class FixedBrokenPowerLaw(FactorizedComponent):
 
     def __init__(self, emin, emax, gamma1=2, gamma2=2, log10ebreak=1e5, eref=1):
         super().__init__(emin=emin, emax=emax, store="exact")
@@ -246,7 +238,7 @@ class FixedBrokenPowerLaw(Component):
         self.shapefix_values = [gamma1, gamma2, log10ebreak]
         self.shapefix_names = ["gamma1", "gamma2", "log(ebreak)"]
 
-    def evaluate(self, energy, time: Time|None = None):
+    def spectrum(self, energy):
         factor = (10 ** self.shapefix_values[2] / self.eref) ** (self.shapefix_values[1] - self.shapefix_values[0])
         f = np.where(
             np.log10(energy) < self.shapefix_values[2],
@@ -267,7 +259,7 @@ class VariableBrokenPowerLaw(FixedBrokenPowerLaw):
         self.init_shapevars()
         self.grid = np.vectorize(partial(FixedBrokenPowerLaw, self.emin, self.emax, eref=self.eref))(*np.meshgrid(*self.shapevar_grid))
 
-    def evaluate(self, energy, time: Time|None = None):
+    def spectrum(self, energy):
         factor = (10 ** (self.shapevar_values[2]) / self.eref) ** (self.shapevar_values[1] - self.shapevar_values[0])
         f = np.where(
             np.log10(energy) < self.shapevar_values[2],
@@ -293,7 +285,7 @@ class SemiVariableBrokenPowerLaw(FixedBrokenPowerLaw):
         self.init_shapevars()
         self.grid = np.vectorize(partial(FixedBrokenPowerLaw, self.emin, self.emax, gamma1=gamma1, eref=self.eref))(*np.meshgrid(*self.shapevar_grid))
 
-    def evaluate(self, energy, time: Time|None = None):
+    def spectrum(self, energy):
         factor = (10 ** (self.shapevar_values[2]) / self.eref) ** (self.shapevar_values[1] - self.shapevar_values[0])
         f = np.where(
             np.log10(energy) < self.shapevar_values[2],
@@ -374,6 +366,8 @@ class FluxVariableBrokenPowerLaw(FluxBase):
         self.components = [VariableBrokenPowerLaw(emin, emax, gamma_range, log10ebreak_range, eref)]
 
 class FluxTimeDependentFixedPowerLaw(FluxBase):
-    def __init__(self, time_pdf, emin, emax, gamma: float = 2, eref: float = 1):
+    def __init__(self, lightcurve, emin, emax, gamma: float = 2, eref: float = 1):
         super().__init__()
-        self.components = [TimeDependentFixedPowerLaw(time_pdf, emin, emax, gamma=gamma, eref=eref)]
+        component = FixedPowerLaw(emin, emax, gamma=gamma, eref=eref)
+        component.set_lightcurve(lightcurve)
+        self.components = [component]

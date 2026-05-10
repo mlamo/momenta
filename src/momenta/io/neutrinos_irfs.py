@@ -56,6 +56,7 @@ class LivetimeBase:
 class NoLivetime(LivetimeBase):
     def __init__(self, grl=None):
         pass
+    
     def get_acceptance(self, fluxcomponent: Component):
         return 1
 
@@ -84,10 +85,11 @@ class Livetime(LivetimeBase):
         else:
             raise ValueError("Livetime constructor needs either grl_array or grl_file, received neither.")
         self.integral = (self.grl['stop'] - self.grl['start']).sum()
+        self._acceptances = {}
     
     def compute_acceptance(self, fluxcomponent: Component):
         """Evaluate the signal acceptance factor int dlivetime/dt P(t)
-        taking P(t) = fluxcomponent.pdf(t)
+        taking P(t) = fluxcomponent.lightcurve.pdf(t)
         """
         # TODO ensure time PDFs are in seconds
         # maybe better: ensure astropy.time.Time is used everywhere there's ambiguity so an accidental mix
@@ -98,14 +100,15 @@ class Livetime(LivetimeBase):
         # TODO this is very inefficient as we are dealing with short transients that are likely contained entirely within a run,
 
         # This is for a fixed PDF
-        # TODO handle case where fluxcomponent has no time PDF -- not handled in model.
-        
-        cdf = fluxcomponent.time_pdf.cdf
-        run_start = self.grl['start']
-        run_stop = self.grl['stop']
-        # just like in skylab.temporal_models:
-        integral = (cdf(run_stop) - cdf(run_start)).sum()
-        return integral
+        if "lightcurve" not in fluxcomponent.shapefix_names:
+            return 1
+        else:
+            cdf = fluxcomponent.lightcurve.cdf
+            run_start = self.grl['start']
+            run_stop = self.grl['stop']
+            # just like in skylab.temporal_models:
+            integral = (cdf(run_stop) - cdf(run_start)).sum()
+            return integral
     
     def get_acceptance(self, fluxcomponent: Component):
         # TODO only cache when time-related parameters change -- if the component factorizes
@@ -113,8 +116,8 @@ class Livetime(LivetimeBase):
         # below is equivalent to effective area's caching when fluxcomponent.store == "exact"
         # TODO handle case where interpolation is needed with component parameters?
         if cache_key not in self._acceptances:
-            self._acceptances[cache_key] = self.compute_acceptance_map(fluxcomponent)
-            return self._acceptances[cache_key]
+            self._acceptances[cache_key] = self.compute_acceptance(fluxcomponent)
+        return self._acceptances[cache_key]
 
 
 
@@ -428,9 +431,9 @@ class AbsoluteTimeSignal(PDFFluxDependent):
     # NOTE __call__ can also take kwargs which are passed on to the PDF from get_pdf; that could be used for template parameters? 
     def compute_pdf(self, fluxcomponent: Component):
         # TODO can lambda's cause a problem here?
-        if "time_pdf" in fluxcomponent.shapefix_names:
+        if "lightcurve" in fluxcomponent.shapefix_names:
             def f(ev):
-                return fluxcomponent.time_pdf.pdf(ev.mjd)
+                return fluxcomponent.lightcurve.pdf(ev.mjd)
             return f
         else:
             return lambda ev: 1
