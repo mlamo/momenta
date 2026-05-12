@@ -343,7 +343,7 @@ class ModelStacked:
 
     def validate(self):
         if self.priornorm_var == "flux":
-            raise RuntimeError("[Model] Invalid variable used as normalisation, cannot be `flux` as it is source-dependent")
+            print("Warning: assuming `flux` as normalisation variable will assume each source equal in flux")
 
     @property
     def ndims(self):
@@ -463,7 +463,9 @@ class ModelStacked:
             if "energy_denom" in self.toys_sources[isource].dtype.names:
                 _energy_denom[:, isource] = [toys[ipoint][isource].energy_denom for ipoint in range(npoints)]
         etot_to_flux = self.flux.etot_to_flux(_distance_scaling, _viewing_angle)  # dims = (ncompflux, npoints, nsources)
-        if self.priornorm_var == "etot":
+        if self.priornorm_var == "flux":
+            _fluxnorms = norms[..., np.newaxis] * np.swapaxes(np.ones_like(etot_to_flux), 0, 1)
+        elif self.priornorm_var == "etot":
             _fluxnorms = norms[..., np.newaxis] * np.swapaxes(etot_to_flux, 0, 1)  # dims = (npoints, ncompflux, nsources)
         elif self.priornorm_var == "fnu":
             _fluxnorms = norms[..., np.newaxis] * _energy_denom * np.swapaxes(etot_to_flux, 0, 1)  # dims = (npoints, ncompflux, nsources)
@@ -517,6 +519,11 @@ class ModelStacked:
 
     def calculate_deterministics(self, samples):
         det = {}
+        if self.priornorm_var == "flux":
+            fluxnorms = np.array([samples[f"norm{i}"] for i in range(self.flux.ncomponents)])
+            for i in range(self.flux.ncomponents):
+                det[f"fluxnorm{i}"] = fluxnorms[i]
+            det["fluxnom"] = np.sum(fluxnorms, axis=0)
         if self.priornorm_var == "etot":
             etotnorms = np.array([samples[f"norm{i}"] for i in range(self.flux.ncomponents)])
             for i in range(self.flux.ncomponents):
