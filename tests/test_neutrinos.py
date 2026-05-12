@@ -22,13 +22,17 @@ class TestIRFs(unittest.TestCase):
 
 class TestSample(unittest.TestCase):
     def setUp(self):
+        self.on_time = 2.
+        self.total_time = 1000.
         self.s1 = nu.NuSample("sample")
         self.s1.set_observations(0, nu.BackgroundFixed(0.5))
         self.s1.set_pdfs(
             sig_ang=irfs.VonMisesSignal(),
             sig_ene=EnergySignal(),
+            sig_time=irfs.TimeBoxSignal(0, self.on_time),
             bkg_ang=irfs.AngularBackground(lambda ra, dec, energy: 1),
             bkg_ene=irfs.EnergyBackground(lambda ra, dec, energy: 1 / energy),
+            bkg_time=irfs.TimeBackground(self.total_time),
         )
 
     def test_members(self):
@@ -43,14 +47,14 @@ class TestSample(unittest.TestCase):
 
     def test_pdfs(self):
         f = flux.FluxFixedPowerLaw(1, 100, 2)
-        ev = nu.NuEvent(ra=0, dec=0, sigma=0.01, energy=10)
+        ev = nu.NuEvent(ra=0, dec=0, sigma=0.01, energy=10, dt=1)
         ra_src, dec_src = 0, 0
         #
         p_bkg = self.s1.compute_background_probability(ev)
-        self.assertEqual(p_bkg, 1 / ev.energy)
+        self.assertEqual(p_bkg, 1 / ev.energy / self.total_time)
         #
         p_sig = self.s1.compute_signal_probability(ev, f.components[0], ra_src, dec_src)
-        self.assertEqual(p_sig, 1 / (4*np.pi) / ev.sigma**2)
+        self.assertEqual(p_sig, 1 / (4*np.pi) / ev.sigma**2 / self.on_time)
 
 
 class TestDetector(unittest.TestCase):

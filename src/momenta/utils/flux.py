@@ -19,6 +19,9 @@ import abc
 import numpy as np
 from functools import partial
 from scipy.integrate import trapezoid
+import scipy.stats as st
+from scipy import integrate, interpolate
+from astropy.time import Time
 from scipy.interpolate import interp1d, RegularGridInterpolator
 import pandas as pd
 import warnings
@@ -26,7 +29,7 @@ import warnings
 
 from momenta.utils.conversions import JetModelBase, JetIsotropic
 
-
+# TODO maybe include time pdf interface already in base class? then child class only needs a constructor that sets it and there's no if/else outside
 class Component(abc.ABC):
 
     def __init__(self, emin: float, emax: float, store="exact"):
@@ -77,6 +80,13 @@ class Component(abc.ABC):
         self.shapevar_grid = [np.linspace(*s) for s in self.shapevar_boundaries]
         self.shapevar_values = [0.5 * (s[0] + s[1]) for s in self.shapevar_boundaries]
 
+    def get_shapevar_value(self, name):
+        """Obtain the value of the shapevar variable `name`.
+        """
+        idx = self.shapevar_names.index(name)
+        return self.shapevar_values[idx]
+        
+
     @property
     def nshapevars(self):
         return len(self.shapevar_names)
@@ -88,9 +98,9 @@ class Component(abc.ABC):
         if not isinstance(jet, JetModelBase):
             raise TypeError(f"The provided jet model {jet} is not of the proper type (should inherit from JetModelBase).")
         self.jet = jet
-
+    
     @abc.abstractmethod
-    def evaluate(self, energy: np.ndarray) -> np.ndarray:
+    def evaluate(self, energy: np.ndarray, time : float | None = None) -> np.ndarray:
         """Compute the flux value on a given energy array"""
         return None
 
@@ -126,8 +136,41 @@ class Component(abc.ABC):
         """
         return x
 
+class FactorizedComponent(Component):
+    """Component which factorizes into a spectrum and a lightcurve.
+    """
+    
+    def set_lightcurve(self, lightcurve: st.rv_continuous):
+        self.lightcurve = lightcurve
+        self.shapefix_names += ["lightcurve"]
+        self.shapefix_values += [lightcurve]
+        # Could also add parameters loc (offset) and scale (time scale) to the existing one, approx like this:
+        # (as this is with a fixed power law, no shapevar_... yet, only shapefix)
+        #self.shapevar_names += ["loc", "scale"] # get these from PDF to be generic? or fixed interface for
+        #self.shapevar_boundaries = np.array([[[*loc_range]], [*scale_range]]) 
+        #self.init_shapevars()
+        
+    def evaluate(self, energy: np.ndarray, time: Time|None = None):
+        fluence = self.spectrum(energy)
+        if time is None:
+            return fluence
+        else:
+            # with variable PDF:
+            #return fluence * self.lightcurve.pdf(time.mjd, loc=self.get_shapevar_value("loc"), scale=self.get_shapevar_value("scale"))
+            # with constant PDF:
+            return fluence * self.lightcurve.pdf(time.mjd)
+    # we can generally do an analytical integral of dlivetime/dt x P(t)
+    # evaluating the acceptance for this component on the Aeff should only take energy
+# TODO flux component needs to keep track of time PDF parameters
+# 
+# still want an Eiso that is independent of time
+# in new architecture, parameters are component Eiso (by default independent when combined in a standard Flux)
+# TODO make other Flux that allows correlation
+# needed for stacking, as Phi has a built-in d^2 factor from Eiso
+# not physical to include this in f_nu_i  = Etot/EGW or Etransient
+# but that is the place where you could e.g. have L^2 weighting
 
-class FixedTabulated(Component):
+class FixedTabulated(FactorizedComponent):
 
     def __init__(self, df_flux: pd.DataFrame, emin: float = None, emax: float = None, alpha: float = None, beta: float = None):
         """Custom tabulated flux with fixed shape parameters
@@ -152,7 +195,7 @@ class FixedTabulated(Component):
             self.shapefix_names = ["alpha"] if beta is None else ["alpha", "beta"]
             self.shapefix_values = [alpha] if beta is None else [alpha, beta]
 
-    def evaluate(self, energy):
+    def spectrum(self, energy):
         xdata, ydata = np.array(self.df[self.df.columns[0]]), np.array(self.df[self.df.columns[1]])
         xdata = xdata.astype(float)
         ydata = ydata.astype(float)
@@ -160,7 +203,7 @@ class FixedTabulated(Component):
         return np.where((self.emin <= energy) & (energy <= self.emax), interp(energy), 0)
 
 
-class VariableTabulated1D(Component):
+class VariableTabulated1D(FactorizedComponent):
     def __init__(self, df_fluxes: pd.DataFrame, emin: float = None, emax: float = None):
         """Custom tabulated flux with one free shape parameter
 
@@ -206,7 +249,7 @@ class VariableTabulated1D(Component):
             (self.alphas, self.energy_range), interpolated_fluxes, bounds_error=False, fill_value=0
         )
 
-    def evaluate(self, energy):
+    def spectrum(self, energy):
         if np.isscalar(energy):
             return self.energy_alpha_interpolator([self.shapevar_values[0], energy])[0]
         energy = np.array(energy)
@@ -217,7 +260,7 @@ class VariableTabulated1D(Component):
         return self.alphas[0] + (self.alphas[-1] - self.alphas[0]) * x
 
 
-class VariableTabulated2D(Component):
+class VariableTabulated2D(FactorizedComponent):
     def __init__(self, df_fluxes: pd.DataFrame, emin: float = None, emax: float = None):
         """Custom tabulated flux with two free shape parameters
 
@@ -276,7 +319,7 @@ class VariableTabulated2D(Component):
             (self.alphas, self.betas, self.energy_range), interpolated_fluxes, bounds_error=False, fill_value=0
         )
 
-    def evaluate(self, energy):
+    def spectrum(self, energy):
         if np.isscalar(energy):
             return self.energy_alpha_beta_interpolator([self.shapevar_values[0], self.shapevar_values[1], energy])[0]
         energy = np.array(energy)
@@ -289,7 +332,7 @@ class VariableTabulated2D(Component):
         )
 
 
-class FixedPowerLaw(Component):
+class FixedPowerLaw(FactorizedComponent):
 
     def __init__(self, emin: float, emax: float, gamma: float = 2, eref: float = 1):
         """Analytic power law flux with a fixed spectral index.
@@ -305,11 +348,62 @@ class FixedPowerLaw(Component):
         self.shapefix_names = ["gamma"]
         self.shapefix_values = [gamma]
 
-    def evaluate(self, energy: np.ndarray):
+    def spectrum(self, energy: np.ndarray):
         return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy / self.eref, -self.shapefix_values[0]), 0)
 
+class SampledLightcurve(st.rv_continuous):
+    """A time PDF defined by interpolating a sampled light curve.
 
-class VariablePowerLaw(Component):
+    x: array
+        time points in MJD
+    y: array
+        flux points in arbitrary units
+    """
+    def __init__(self, time, flux):
+        x, y = time, flux
+        self.x = x
+        self.tmin = x.min()
+        self.tmax = x.max()
+        self.y = y/y.max() # regularize units for numerical purposes
+        # cumulative integral
+        cumulative = integrate.cumulative_simpson(y, x=x)
+        self.integral = cumulative[-1]
+        self.pdf_spline = interpolate.make_splrep(self.x, self.y/self.integral)
+        self.cdf_points = np.append(0, cumulative/self.integral)
+        self.cdf_spline = interpolate.make_splrep(self.x, self.cdf_points)
+        # reverse map in order to generate samples
+        self.map_spline = interpolate.make_splrep(self.cdf_points, self.x)
+
+    def _pdf(self, t):
+        if (self.tmin <= t) and (t <= self.tmax):
+            return self.pdf_spline()
+        else:
+            return 0
+    def _cdf(self, t):
+        if (t <= self.tmin):
+            return 0
+        elif (t >= self.tmax):
+            return 1
+        else:
+            return self.cdf_spline()
+        
+    def _ppf(self, cdf):
+        return self.map_spline(cdf)
+
+class BinnedLightcurve(st.rv_histogram):
+    """Define a time PDF from a binned light curve.
+
+    edges: array
+        bin edges in MJD
+    values: array
+        flux values in arbitrary units
+    """
+    def __init__(self, edges, values):
+        values /= values.max() # normalize for numerical purposes
+        return super().__init__((values, edges), density=True)
+
+
+class VariablePowerLaw(FactorizedComponent):
 
     def __init__(self, emin: float, emax: float, gamma_range: tuple[int, int, int] = (1, 4, 16), eref: float = 1):
         """Analytic power law flux with a variable spectral index.
@@ -327,14 +421,14 @@ class VariablePowerLaw(Component):
         self.init_shapevars()
         self.grid = np.vectorize(partial(FixedPowerLaw, self.emin, self.emax, eref=self.eref))(self.shapevar_grid[0])
 
-    def evaluate(self, energy: np.ndarray):
+    def spectrum(self, energy: np.ndarray):
         return np.where((self.emin <= energy) & (energy <= self.emax), np.power(energy / self.eref, -self.shapevar_values[0]), 0)
 
     def prior_transform(self, x):
         return self.shapevar_boundaries[0][0] + (self.shapevar_boundaries[0][1] - self.shapevar_boundaries[0][0]) * x
 
 
-class FixedBrokenPowerLaw(Component):
+class FixedBrokenPowerLaw(FactorizedComponent):
 
     def __init__(self, emin: float, emax: float, gamma1: float = 2, gamma2: float = 2, log10ebreak: float = 5, eref: float = 1):
         """Analytic broken power law flux where every shape parameter, the two spectral indices and the break energy, are fixed.
@@ -352,7 +446,7 @@ class FixedBrokenPowerLaw(Component):
         self.shapefix_values = [gamma1, gamma2, log10ebreak]
         self.shapefix_names = ["gamma1", "gamma2", "log(ebreak)"]
 
-    def evaluate(self, energy: np.ndarray):
+    def spectrum(self, energy: np.ndarray):
         factor = (10 ** self.shapefix_values[2] / self.eref) ** (self.shapefix_values[1] - self.shapefix_values[0])
         f = np.where(
             np.log10(energy) < self.shapefix_values[2],
@@ -391,7 +485,7 @@ class VariableBrokenPowerLaw(FixedBrokenPowerLaw):
         self.init_shapevars()
         self.grid = np.vectorize(partial(FixedBrokenPowerLaw, self.emin, self.emax, eref=self.eref))(*np.meshgrid(*self.shapevar_grid, indexing="ij"))
 
-    def evaluate(self, energy: np.ndarray):
+    def spectrum(self, energy: np.ndarray):
         factor = (10 ** (self.shapevar_values[2]) / self.eref) ** (self.shapevar_values[1] - self.shapevar_values[0])
         f = np.where(
             np.log10(energy) < self.shapevar_values[2],
@@ -404,7 +498,7 @@ class VariableBrokenPowerLaw(FixedBrokenPowerLaw):
         return self.shapevar_boundaries[:, 0] + (self.shapevar_boundaries[:, 1] - self.shapevar_boundaries[:, 0]) * x
 
 
-class QuasithermalSpectrum(Component):
+class QuasithermalSpectrum(FactorizedComponent):
     
     def __init__(self, emean: float = 100, alpha: float = 2):
         """Quasi thermal spectrum of the type f(E) = (E/Emean)^alpha * exp(-(alpha+1) * E/Emean). 
@@ -419,7 +513,7 @@ class QuasithermalSpectrum(Component):
         self.shapefix_names = ["emean"]
         self.shapefix_values = [emean]
 
-    def evaluate(self, energy: np.ndarray):
+    def spectrum(self, energy: np.ndarray):
         x = energy / self.shapefix_values[0]
         return np.where((self.emin <= energy) & (energy <= self.emax), np.power(x, self.alpha) * np.exp(-(self.alpha+1)*x), 0)
 
@@ -462,8 +556,8 @@ class FluxBase(abc.ABC):
         for c, i in zip(self.components, self.shapevar_positions):
             c.set_shapevars(shapes[i - c.nshapevars : i])
 
-    def evaluate(self, energy):
-        return [c.evaluate(energy) for c in self.components]
+    def evaluate(self, energy, time: Time|None = None):
+        return [c.evaluate(energy, time) for c in self.components]
 
     def flux_to_etot(self, distance_scaling: float, viewing_angle: float):
         return np.array([c.flux_to_etot(distance_scaling, viewing_angle) for c in self.components])
@@ -515,3 +609,11 @@ class FluxQuasiThermal(FluxBase):
     def __init__(self, emean=100, alpha=2):
         super().__init__()
         self.components = [QuasithermalSpectrum(emean, alpha)]
+
+
+class FluxTimeDependentFixedPowerLaw(FluxBase):
+    def __init__(self, lightcurve, emin, emax, gamma: float = 2, eref: float = 1):
+        super().__init__()
+        component = FixedPowerLaw(emin, emax, gamma=gamma, eref=eref)
+        component.set_lightcurve(lightcurve)
+        self.components = [component]

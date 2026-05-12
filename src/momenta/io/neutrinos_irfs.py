@@ -23,12 +23,101 @@ import numpy as np
 from copy import deepcopy, copy
 
 from astropy.units import deg
+from astropy.time import Time
 from scipy.integrate import simpson
 from scipy.interpolate import interp1d, RegularGridInterpolator
-from scipy.stats import norm
-from typing import Callable
+from scipy.stats import uniform, norm, rv_continuous
+from typing import Callable, Iterable
 
 from momenta.utils.flux import Component
+
+# TODO add methods here to correct also background PDF acceptance
+# and can have compute scaling factors (for each component and BG) once
+# then apply to both acceptance and PDF norm
+# and default value of 1 if no time dep
+# might not even need the separate Acceptance/Aeff class if it's a default factor
+# current way of setting background estimate and PDF independently is not ideal
+
+class LivetimeBase:
+    @abc.abstractmethod
+    def __init__(self):
+        pass
+
+    @abc.abstractmethod
+    def get_acceptance(self, fluxcomponent: Component):
+        pass
+
+    @abc.abstractmethod
+    def get_livetime(self, tmin: Time, tmax: Time):
+        pass
+
+# to allow configuration of detectors that ignore livetime acceptance - i.e. preserving
+# behaviour without time dependence. Make this the default in some Detector.__init__ or so?
+class NoLivetime(LivetimeBase):
+    def __init__(self, grl=None):
+        pass
+    
+    def get_acceptance(self, fluxcomponent: Component):
+        return 1
+
+    # FIXME is this the right thing? might replace some already existing thing with .background?
+    # or interface with neutrinos.Background classes
+    def get_livetime(self, tmin: Time, tmax: Time):
+        return (tmax - tmin).to("s")
+
+# TODO cover the case where you have events in a gap for some reason - where should this be handled?
+class Livetime(LivetimeBase):
+    """Class to store the livetime pattern of a dataset and evaluate the acceptance to a time PDF.
+    """
+    # TODO a way to evaluate this w.r.t. an analysis time window, or with dt (time relative to trigger)
+    def __init__(self,
+        grl_array: np.ndarray| None = None,
+        grl_file: str| None = None,
+        ):
+        """Init with Skylab-compatible GRL: an array with with fields start and stop in MJD.
+        (run, livetime, events are typically also available.)
+        """
+        # TODO maybe better if there was a class for this? but anyway will be loading/setting this in different ways
+        if grl_array:
+            self.grl = grl_array
+        elif grl_file:
+            self.grl = np.load(grl_file)
+        else:
+            raise ValueError("Livetime constructor needs either grl_array or grl_file, received neither.")
+        self.integral = (self.grl['stop'] - self.grl['start']).sum()
+        self._acceptances = {}
+    
+    def compute_acceptance(self, fluxcomponent: Component):
+        """Evaluate the signal acceptance factor int dlivetime/dt P(t)
+        taking P(t) = fluxcomponent.lightcurve.pdf(t)
+        """
+        # TODO ensure time PDFs are in seconds
+        # maybe better: ensure astropy.time.Time is used everywhere there's ambiguity so an accidental mix
+        # of MJD's e.g. in a Livetime and seconds e.g. in a Lightcurve does not cause problems.
+        # NB: this assumes theoretical LCs taken as templates relative to a known transient
+        # Covering the case of a LC defined on the same axis as the data is... possible?
+        # the same t0 defines the dt of the events, i.e. upon which time PDFs will be evaluated.
+        # TODO this is very inefficient as we are dealing with short transients that are likely contained entirely within a run,
+
+        # This is for a fixed PDF
+        if "lightcurve" not in fluxcomponent.shapefix_names:
+            return 1
+        else:
+            cdf = fluxcomponent.lightcurve.cdf
+            run_start = self.grl['start']
+            run_stop = self.grl['stop']
+            # just like in skylab.temporal_models:
+            integral = (cdf(run_stop) - cdf(run_start)).sum()
+            return integral
+    
+    def get_acceptance(self, fluxcomponent: Component):
+        # TODO only cache when time-related parameters change -- if the component factorizes
+        cache_key = str(fluxcomponent)
+        # below is equivalent to effective area's caching when fluxcomponent.store == "exact"
+        # TODO handle case where interpolation is needed with component parameters?
+        if cache_key not in self._acceptances:
+            self._acceptances[cache_key] = self.compute_acceptance(fluxcomponent)
+        return self._acceptances[cache_key]
 
 
 def angular_distance(ra1: np.ndarray, dec1: np.ndarray, ra2: np.ndarray, dec2: np.ndarray, degrees1=False, degrees2=False) -> np.ndarray:
@@ -69,7 +158,7 @@ class EffectiveAreaBase:
         """Evaluate the effective area for a given energy, pixel index, and skymap resolution."""
         return 0 * self._scaling_factor
 
-    def _compute_acceptance(self, fluxcomponent: Component, ipix: int, nside: int):
+    def _compute_acceptance(self, fluxcomponent: Component, ipix: int, nside: int):#, t0: Time | None=None): # ipix should be joined by t0: can have priors on it... but that would be redundant with loc parameter
         """Compute the acceptance integrating the effective area x flux in log scale between emin and emax.
         Only used internally by `compute_acceptance_map`, may be overriden in a inheriting class."""
 
@@ -80,11 +169,13 @@ class EffectiveAreaBase:
         y = func(x)
         return simpson(y, x=x)
 
+    
     def compute_acceptance_map(self, fluxcomponent: Component, nside: int):
         """Compute the acceptance map for a given flux component, iterating over all pixels."""
         return np.array([self._compute_acceptance(fluxcomponent, ipix, nside) for ipix in range(hp.nside2npix(nside))])
+    # TODO can this not be made more efficient?
 
-    def compute_acceptance_maps(self, fluxcomponents: list[Component], nside: int):
+    def compute_acceptance_maps(self, fluxcomponents: list[Component], nside: int):#, t0: Time | None=None):
         """Compute the acceptance maps for a list of flux components, iterating over all components and pixels.
         May be overriden by a smarter implementation for specific cases where computation can be optimized."""
         return [self.compute_acceptance_map(c, nside) for c in fluxcomponents]
@@ -111,7 +202,7 @@ class EffectiveAreaBase:
             return copy(self._acceptances[(str(fluxcomponent), nside)])
         return self.compute_acceptance_map(fluxcomponent, nside)
 
-    def get_acceptance(self, fluxcomponent: Component, ipix: int, nside: int):
+    def get_acceptance(self, fluxcomponent: Component, ipix: int, nside: int): # could be joined by , t0: Time as something with priors
         """Get the acceptance"""
         if fluxcomponent.store == "exact":
             return self.get_acceptance_map(fluxcomponent, nside)[ipix]
@@ -133,6 +224,7 @@ class EffectiveAreaBase:
     def __rmul__(self, factor: float):
         return self.__mul__(factor)
 
+# TODO how you implement in the LLH determines whether you can use this integrated acceptance, or need Acceptance(t)
 
 class EffectiveAreaAllSky(EffectiveAreaBase):
     """Handle effective areas that only depend on the neutrino energy (with no direction dependence)."""
@@ -166,7 +258,6 @@ class EffectiveAreaAllSky(EffectiveAreaBase):
     def compute_acceptance_map(self, fluxcomponent: Component, nside: int):
         acc = self._compute_acceptance(fluxcomponent, 0, nside) * np.ones(hp.nside2npix(nside))
         return acc
-
 
 class EffectiveAreaDeclinationDep(EffectiveAreaBase):
     """Handle effective areas that depend on energy and declination. The function should be defined by the user in the attribute `func`.
@@ -208,7 +299,6 @@ class EffectiveAreaDeclinationDep(EffectiveAreaBase):
         ipix = np.arange(hp.nside2npix(nside))
         _, dec = hp.pix2ang(nside, ipix, lonlat=True)
         return dec
-
 
 class EffectiveAreaAltitudeDep(EffectiveAreaBase):
     """Handle effective areas that depend on energy and altitude. The function should be defined by the user in the attribute `func`.
@@ -338,7 +428,6 @@ class PDFFluxDependent(PDFBase):
 
             return RegularGridInterpolator(fluxcomponent.shapevar_grid, np.vectorize(f)(pdfs))(fluxcomponent.shapevar_values)
 
-
 class EnergySignal(PDFFluxDependent):
     """The standard energy signal PDF is a function f(ra,dec,E,flux)."""
 
@@ -381,21 +470,30 @@ class AngularBackground(PDFBase):
         return self.func(evt.ra, evt.dec, evt.energy)
 
 
-class TimeSignal(PDFFluxDependent):
-    """The standard time signal PDF is a function f(deltaT)."""
+class AbsoluteTimeSignal(PDFFluxDependent):
+    """Evaluate the time PDF of the flux component in absolute time, if it has one."""
 
-    def __init__(self, func: Callable = None):
+    def __init__(self):
         super().__init__()
-        self.func = func
+    
+    # NOTE __call__ can also take kwargs which are passed on to the PDF from get_pdf; that could be used for template parameters? 
+    def compute_pdf(self, fluxcomponent: Component):
+        # TODO can lambda's cause a problem here?
+        if "lightcurve" in fluxcomponent.shapefix_names:
+            def f(ev):
+                return fluxcomponent.lightcurve.pdf(ev.mjd)
+            return f
+        else:
+            return lambda ev: 1
 
-    def __call__(self, evt):
-        return self.func(evt.dt)
 
 
 class TimeBackground(PDFBase):
-    """The standard time background PDF is an uniform function f(deltaT) = 1/timewindow."""
+    """The standard time background PDF is an uniform function f(deltaT) = 1/timewindow.
+    Assuming all events passed to it are in the window, their time isn't needed.
+    """
 
-    def __init__(self, timewindow_length: float):
+    def __init__(self, timewindow_length: float): # or time window livetime!
         super().__init__()
         self.timewindow_length = timewindow_length
 
@@ -425,32 +523,32 @@ class IsotropicBackground(AngularBackground):
         super().__init__()
 
     def __call__(self, evt):
-        return 1 / (4 * np.pi)
+        return 1 / (4*np.pi)
+    
+class RelativeTimeSignal(PDFBase):
+    """Evaluate a template time PDF in relative time.
+    """
+    def __init__(self, rv: rv_continuous):
+        super().__init__()
+        self.rv = rv
+    
+    def __call__(self, evt):
+        return self.rv.pdf(evt.dt)
 
-
-class TimeBoxSignal(TimeSignal):
-    """A common time signal PDF is 1/dt for t0 <= t < t0+dt and 0 otherwise."""
+class TimeBoxSignal(RelativeTimeSignal):
+    """A common time signal PDF is 1/dt for t0 <= t < t0+dt and 0 otherwise.
+    This is a generic template used with relative times.
+    """
 
     def __init__(self, t0: float | None = None, sigma_t: float | None = None):
-        super().__init__()
-        self.t0 = t0
-        self.sigma_t = sigma_t
+        rv = uniform(loc=t0, scale=sigma_t)
+        super().__init__(rv)
 
-    def __call__(self, evt, t0: float | None = None, sigma_t: float | None = None):
-        t0 = self.t0 if t0 is None else t0
-        sigma_t = self.sigma_t if sigma_t is None else sigma_t
-        return 1 / sigma_t * ((evt.dt >= t0) & (evt.dt < t0 + sigma_t))
-
-
-class TimeGausSignal(TimeSignal):
-    """A commin time signal PDF is a normal distribution centered on t0."""
+class TimeGausSignal(RelativeTimeSignal):
+    """A common time signal PDF is a normal distribution centered on t0.
+    This is a generic template used with relative times.
+    """
 
     def __init__(self, t0: float | None = None, sigma_t: float | None = None):
-        super().__init__()
-        self.t0 = t0
-        self.sigma_t = sigma_t
-
-    def __call__(self, evt, t0: float | None = None, sigma_t: float | None = None):
-        t0 = self.t0 if t0 is None else t0
-        sigma_t = self.sigma_t if sigma_t is None else sigma_t
-        return norm.pdf(evt.dt, loc=t0, scale=sigma_t)
+        rv = norm(loc=t0, scale=sigma_t)
+        super().__init__(rv)
