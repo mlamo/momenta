@@ -136,8 +136,41 @@ class Component(abc.ABC):
         """
         return x
 
+class FactorizedComponent(Component):
+    """Component which factorizes into a spectrum and a lightcurve.
+    """
+    
+    def set_lightcurve(self, lightcurve: st.rv_continuous):
+        self.lightcurve = lightcurve
+        self.shapefix_names += ["lightcurve"]
+        self.shapefix_values += [lightcurve]
+        # Could also add parameters loc (offset) and scale (time scale) to the existing one, approx like this:
+        # (as this is with a fixed power law, no shapevar_... yet, only shapefix)
+        #self.shapevar_names += ["loc", "scale"] # get these from PDF to be generic? or fixed interface for
+        #self.shapevar_boundaries = np.array([[[*loc_range]], [*scale_range]]) 
+        #self.init_shapevars()
+        
+    def evaluate(self, energy: np.ndarray, time: Time|None = None):
+        fluence = self.spectrum(energy)
+        if time is None:
+            return fluence
+        else:
+            # with variable PDF:
+            #return fluence * self.lightcurve.pdf(time.mjd, loc=self.get_shapevar_value("loc"), scale=self.get_shapevar_value("scale"))
+            # with constant PDF:
+            return fluence * self.lightcurve.pdf(time.mjd)
+    # we can generally do an analytical integral of dlivetime/dt x P(t)
+    # evaluating the acceptance for this component on the Aeff should only take energy
+# TODO flux component needs to keep track of time PDF parameters
+# 
+# still want an Eiso that is independent of time
+# in new architecture, parameters are component Eiso (by default independent when combined in a standard Flux)
+# TODO make other Flux that allows correlation
+# needed for stacking, as Phi has a built-in d^2 factor from Eiso
+# not physical to include this in f_nu_i  = Etot/EGW or Etransient
+# but that is the place where you could e.g. have L^2 weighting
 
-class FixedTabulated(Component):
+class FixedTabulated(FactorizedComponent):
 
     def __init__(self, df_flux: pd.DataFrame, emin: float = None, emax: float = None, alpha: float = None, beta: float = None):
         """Custom tabulated flux with fixed shape parameters
@@ -162,7 +195,7 @@ class FixedTabulated(Component):
             self.shapefix_names = ["alpha"] if beta is None else ["alpha", "beta"]
             self.shapefix_values = [alpha] if beta is None else [alpha, beta]
 
-    def evaluate(self, energy):
+    def spectrum(self, energy):
         xdata, ydata = np.array(self.df[self.df.columns[0]]), np.array(self.df[self.df.columns[1]])
         xdata = xdata.astype(float)
         ydata = ydata.astype(float)
@@ -170,7 +203,7 @@ class FixedTabulated(Component):
         return np.where((self.emin <= energy) & (energy <= self.emax), interp(energy), 0)
 
 
-class VariableTabulated1D(Component):
+class VariableTabulated1D(FactorizedComponent):
     def __init__(self, df_fluxes: pd.DataFrame, emin: float = None, emax: float = None):
         """Custom tabulated flux with one free shape parameter
 
@@ -216,7 +249,7 @@ class VariableTabulated1D(Component):
             (self.alphas, self.energy_range), interpolated_fluxes, bounds_error=False, fill_value=0
         )
 
-    def evaluate(self, energy):
+    def spectrum(self, energy):
         if np.isscalar(energy):
             return self.energy_alpha_interpolator([self.shapevar_values[0], energy])[0]
         energy = np.array(energy)
@@ -227,7 +260,7 @@ class VariableTabulated1D(Component):
         return self.alphas[0] + (self.alphas[-1] - self.alphas[0]) * x
 
 
-class VariableTabulated2D(Component):
+class VariableTabulated2D(FactorizedComponent):
     def __init__(self, df_fluxes: pd.DataFrame, emin: float = None, emax: float = None):
         """Custom tabulated flux with two free shape parameters
 
@@ -286,7 +319,7 @@ class VariableTabulated2D(Component):
             (self.alphas, self.betas, self.energy_range), interpolated_fluxes, bounds_error=False, fill_value=0
         )
 
-    def evaluate(self, energy):
+    def spectrum(self, energy):
         if np.isscalar(energy):
             return self.energy_alpha_beta_interpolator([self.shapevar_values[0], self.shapevar_values[1], energy])[0]
         energy = np.array(energy)
@@ -298,42 +331,6 @@ class VariableTabulated2D(Component):
             np.array([self.alphas[0], self.betas[0]]) + (np.array([self.alphas[-1], self.betas[-1]]) - np.array([self.alphas[0], self.betas[0]])) * x
         )
 
-
-
-
-class FactorizedComponent(Component):
-    """Component which factorizes into a spectrum and a lightcurve.
-    """
-    
-    def set_lightcurve(self, lightcurve: st.rv_continuous):
-        self.lightcurve = lightcurve
-        self.shapefix_names += ["lightcurve"]
-        self.shapefix_values += [lightcurve]
-        # Could also add parameters loc (offset) and scale (time scale) to the existing one, approx like this:
-        # (as this is with a fixed power law, no shapevar_... yet, only shapefix)
-        #self.shapevar_names += ["loc", "scale"] # get these from PDF to be generic? or fixed interface for
-        #self.shapevar_boundaries = np.array([[[*loc_range]], [*scale_range]]) 
-        #self.init_shapevars()
-        
-    def evaluate(self, energy: np.ndarray, time: Time|None = None):
-        fluence = self.spectrum(energy)
-        if time is None:
-            return fluence
-        else:
-            # with variable PDF:
-            #return fluence * self.lightcurve.pdf(time.mjd, loc=self.get_shapevar_value("loc"), scale=self.get_shapevar_value("scale"))
-            # with constant PDF:
-            return fluence * self.lightcurve.pdf(time.mjd)
-    # we can generally do an analytical integral of dlivetime/dt x P(t)
-    # evaluating the acceptance for this component on the Aeff should only take energy
-# TODO flux component needs to keep track of time PDF parameters
-# 
-# still want an Eiso that is independent of time
-# in new architecture, parameters are component Eiso (by default independent when combined in a standard Flux)
-# TODO make other Flux that allows correlation
-# needed for stacking, as Phi has a built-in d^2 factor from Eiso
-# not physical to include this in f_nu_i  = Etot/EGW or Etransient
-# but that is the place where you could e.g. have L^2 weighting
 
 class FixedPowerLaw(FactorizedComponent):
 
@@ -405,6 +402,7 @@ class BinnedLightcurve(st.rv_histogram):
         values /= values.max() # normalize for numerical purposes
         return super().__init__((values, edges), density=True)
 
+
 class VariablePowerLaw(FactorizedComponent):
 
     def __init__(self, emin: float, emax: float, gamma_range: tuple[int, int, int] = (1, 4, 16), eref: float = 1):
@@ -448,7 +446,7 @@ class FixedBrokenPowerLaw(FactorizedComponent):
         self.shapefix_values = [gamma1, gamma2, log10ebreak]
         self.shapefix_names = ["gamma1", "gamma2", "log(ebreak)"]
 
-    def spectrum(self, energy):
+    def spectrum(self, energy: np.ndarray):
         factor = (10 ** self.shapefix_values[2] / self.eref) ** (self.shapefix_values[1] - self.shapefix_values[0])
         f = np.where(
             np.log10(energy) < self.shapefix_values[2],
@@ -500,7 +498,7 @@ class VariableBrokenPowerLaw(FixedBrokenPowerLaw):
         return self.shapevar_boundaries[:, 0] + (self.shapevar_boundaries[:, 1] - self.shapevar_boundaries[:, 0]) * x
 
 
-class QuasithermalSpectrum(Component):
+class QuasithermalSpectrum(FactorizedComponent):
     
     def __init__(self, emean: float = 100, alpha: float = 2):
         """Quasi thermal spectrum of the type f(E) = (E/Emean)^alpha * exp(-(alpha+1) * E/Emean). 
@@ -515,7 +513,7 @@ class QuasithermalSpectrum(Component):
         self.shapefix_names = ["emean"]
         self.shapefix_values = [emean]
 
-    def evaluate(self, energy: np.ndarray):
+    def spectrum(self, energy: np.ndarray):
         x = energy / self.shapefix_values[0]
         return np.where((self.emin <= energy) & (energy <= self.emax), np.power(x, self.alpha) * np.exp(-(self.alpha+1)*x), 0)
 
