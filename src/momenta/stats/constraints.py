@@ -1,18 +1,18 @@
 """
-    Copyright (C) 2024  Mathieu Lamoureux
+Copyright (C) 2024  Mathieu Lamoureux
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import copy
@@ -28,11 +28,11 @@ from momenta.utils.flux import FluxFixedPowerLaw
 
 
 def upperlimit_from_sample(sample: np.ndarray, CL: float = 0.90) -> float:
-    """Return upper limit at a given confidence level from a list of values
+    """Return upper limit at a given credible level from a list of values
 
     Args:
         sample (np.ndarray): list of values
-        CL (float, optional): desired confidence level. Defaults to 0.90.
+        CL (float, optional): desired credible level. Defaults to 0.90.
 
     Returns:
         float: upper limit
@@ -43,11 +43,11 @@ def upperlimit_from_sample(sample: np.ndarray, CL: float = 0.90) -> float:
 
 
 def get_limits(result: dict, CL: float = 0.90) -> dict[str, float]:
-    """Compute all upper limits at a given confidence level, adding all relevant astro quantities.
+    """Compute all upper limits at a given credible level, adding all relevant astro quantities.
 
     Args:
         result (dict): result dictionary from UltraNest
-        CL (float, optional): desired confidence level. Defaults to 0.90.
+        CL (float, optional): desired credible level. Defaults to 0.90.
 
     Returns:
         dict[str, float]: dictionary of upper limits
@@ -60,11 +60,11 @@ def get_limits(result: dict, CL: float = 0.90) -> dict[str, float]:
 
 
 def get_limits_with_uncertainties(result: dict, CL: float = 0.90) -> dict[str, tuple[float]]:
-    """Compute all upper limits at a given confidence level, adding all relevant astro quantities.
+    """Compute all upper limits at a given credible level, adding all relevant astro quantities.
 
     Args:
         result (dict): result dictionary from UltraNest
-        CL (float, optional): desired confidence level. Defaults to 0.90.
+        CL (float, optional): desired credible level. Defaults to 0.90.
 
     Returns:
         dict[str, tuple[float]]: dictionary of upper limits with estimated error
@@ -89,8 +89,8 @@ def compute_differential_limits(detector: NuDetectorBase, src: Transient, parame
     pars = copy.deepcopy(parameters)
     for ll, ul in zip(bins_energy[:-1], bins_energy[1:]):
         pars.flux = FluxFixedPowerLaw(ll, ul, spectral_index)
-        model, result = run_ultranest(detector, src, pars)
-        limits.append(get_limits(result["samples"], model)["flux0_norm"])
+        _, result = run_ultranest(detector, src, pars)
+        limits.append(get_limits(result)["fluxnorm0"])
     return limits
 
 

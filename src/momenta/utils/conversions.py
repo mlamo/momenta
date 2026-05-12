@@ -1,18 +1,18 @@
 """
-    Copyright (C) 2024  Mathieu Lamoureux
+Copyright (C) 2024  Mathieu Lamoureux
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import abc
@@ -60,6 +60,12 @@ class JetVonMises(JetModelBase):
     """Emission in a Gaussian jet."""
 
     def __init__(self, jet_opening: float, with_counter: bool = False):
+        """Construction of the Von Mises jet.
+
+        Args:
+            jet_opening (float): Opening of the jet in radians.
+            with_counter (bool, optional): Whether there is also a jet at theta=pi. Defaults to False.
+        """
         super().__init__(jet_opening)
         self.with_counter = with_counter
         self.kappa = np.longdouble(1 / (self.jet_opening**2))
@@ -79,6 +85,12 @@ class JetRectangular(JetModelBase):
     """Emission in a rectangular jet (constant inside a cone, zero elsewhere)."""
 
     def __init__(self, jet_opening: float, with_counter: bool = False):
+        """Construction of the rectangular jet.
+
+        Args:
+            jet_opening (float): Opening of the jet in radians.
+            with_counter (bool, optional): Whether there is also a jet at theta=pi. Defaults to False.
+        """
         super().__init__(jet_opening)
         self.with_counter = with_counter
 

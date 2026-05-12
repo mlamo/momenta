@@ -1,21 +1,22 @@
 # Multi-Observations Multi-Energy Neutrino Transient Analysis
 
-![MOMENTA logo](https://github.com/mlamo/jang/blob/main/doc/logo_v1_darkmode.svg#gh-dark-mode-only)
-![MOMENTA logo](https://github.com/mlamo/jang/blob/main/doc/logo_v1_lightmode.svg#gh-light-mode-only)
+![MOMENTA logo](https://github.com/CP3-Neutrino/momenta/blob/main/doc/logo_v1_darkmode.svg#gh-dark-mode-only)
+![MOMENTA logo](https://github.com/CP3-Neutrino/momenta/blob/main/doc/logo_v1_lightmode.svg#gh-light-mode-only)
 
-[![tests](https://github.com/mlamo/momenta/actions/workflows/tests.yml/badge.svg)](https://github.com/mlamo/momenta/actions/workflows/tests.yml)
-[![codecov](https://codecov.io/gh/mlamo/momenta/branch/main/graph/badge.svg?token=PVBSZ9P7TR)](https://codecov.io/gh/mlamo/momenta)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/CP3-Neutrino/momenta/HEAD?urlpath=%2Fdoc%2Ftree%2Fexamples%2Fhandson_tutorial.ipynb)
+[![tests](https://github.com/CP3-Neutrino/momenta/actions/workflows/tests.yml/badge.svg)](https://github.com/CP3-Neutrino/momenta/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/gh/CP3-Neutrino/momenta/branch/main/graph/badge.svg?token=PVBSZ9P7TR)](https://codecov.io/gh/CP3-Neutrino/momenta)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://opensource.org/licenses/GPL-3.0)
 
 This package aims to compute constraints on the neutrino emission from transient objects (either point sources or with some larger uncertainty on the localisation). The user should provide all the inputs in terms of neutrino observations and instrument response functions, as well as the flux spectrum and optionally the jet model to be considered. The code returns the posterior distribution from which upper limits, credible intervals and other information may be obtained. 
 
-The main feature is that multiple samples from multiple detectors can be easily combined, allowing for constraints spanning large energy ranges and/or with complementary sky coverage.
+The main feature is that multiple samples from multiple detectors can be easily combined, allowing for constraints spanning large energy ranges and/or with complementary sky coverage. Additionally, it is possible to stack several sources to compute common constraints, e.g., on the total isotropic energy.
 
 More information on the methods is provided in the PDF documentation in ``doc/`` (still preliminary).
 
 ## Installation
 
-* Clone the repository: ``git clone https://github.com/mlamo/momenta.git``
+* Clone the repository: ``git clone https://github.com/CP3-Neutrino/momenta.git``
 * Install the package and all dependencies: ``cd momenta && pip install -e .``
 
 ## Step-by-step usage
@@ -26,7 +27,7 @@ More information on the methods is provided in the PDF documentation in ``doc/``
 * Load the parameters:
 ```python
 from momenta.io import Parameters
-pars = Parameters("examples/parameter_files/path_to_yaml_file")
+pars = Parameters("examples/input_files/config.yaml")
 ```
 
 * Select the neutrino spectrum and eventually jet model:
@@ -37,11 +38,11 @@ flux = momenta.utils.flux.FluxFixedPowerLaw(1, 1e6, 2, eref=1)
 flux.components[0].set_jet(momenta.utils.conversions.JetVonMises(np.deg2rad(10)))
 pars.set_flux(flux)
 ```
-(the list of available jet models is available in ``src/momenta/utils/conversions.py``)
+The possible flux models are available in ``src/momenta/utils/flux.py``. On top of analytical flux formula (e.g., single or broken power-law), it is possible to define tabulated flux (see dedicated example). The complete list of available jet models is available in ``src/momenta/utils/conversions.py``.
 
 ### Detector information
    
-* Create/use a YAML file with all relevant information (examples in ``examples/input_files/DETECTORNAME/detector.yaml``)
+* Create/use a YAML file with all relevant information (example: ``examples/input_files/detector.yaml``)
 * Create a new detector object:
 ```python
 from momenta.io import NuDetector
@@ -66,11 +67,13 @@ det.set_observations(n_observed=[0,0], background=bkg)
 ```python
 from momenta.io import GWDatabase
 database_gw = GWDatabase(path_to_csv)
+database_gw.set_parameters(pars)
 ```
+The last line is needed because the parameter object holds which key should be used in priority in the GW posterior sample files (they usually contain several entries corresponding to different waveform hypotheses, the parameters are setting which one should be preferred).
 
 * A GW event can be extracted from it:
 ```python
-gw = database_gw.find_gw(name_of_gw, pars)
+gw = database_gw.find_gw(name_of_gw)
 ```
 
 * For point sources, one may use:
@@ -103,13 +106,15 @@ print("HPD interval", get_hpd_interval(result["samples"]["fluxnorm0"], CL=0.90))
 
 ## Full examples
 
-Some full examples are available in `examples/`:
-* `superkamiokande.py` provides a full example using Super-Kamiokande public effective areas from [Zenodo](https://zenodo.org/records/4724823) and expected background rates from [Astrophys.J. 918 (2021) 2, 78](https://doi.org/10.3847/1538-4357/ac0d5a).
-* `full_example.ipynb` provides a step-by-step example to get sensitivities and perform a combination of different detectors.
+Some full examples are available in the `examples/` directory:
 
+* `full_example.ipynb` provides a step-by-step example to get sensitivities and perform a combination of different detectors.
+* `stacking_example.ipynb` provides an example on how to perform stacking analyses, combining the information from different sources.
+* `superkamiokande.ipynb` provides a full example using Super-Kamiokande public effective areas from [Zenodo](https://zenodo.org/records/4724823) and expected background rates from [Astrophys.J. 918 (2021) 2, 78](https://doi.org/10.3847/1538-4357/ac0d5a).
+* `tabulated_flux.ipynb` provides an example on how to define and use tabulated fluxes instead of analytical formula (to implement specific emission models).
 
 ## Credits
 
-The code is currently being developed within the "Neutrino astronomy" group in the CP3 institute of the UCLouvain (Belgium). Contacts can be found in the repository metadata.
+The code is currently being developed and maintained within the "Neutrino astronomy" group in the CP3 institute of the UCLouvain (Belgium). The original developer (Mathieu Lamoureux) is now at APC in Université Paris Cité (France). Contacts can be found in the repository metadata.
 
-<img src="https://github.com/mlamo/jang/blob/optimisation/doc/logo_UCLouvain.png" alt="UCLouvain logo" height="60"/><img src="https://github.com/mlamo/jang/blob/optimisation/doc/logo_AstroCP3.png" alt="Astro-CP3 logo" height="80"/>
+<img src="https://github.com/CP3-Neutrino/momenta/blob/main/doc/logo_UCLouvain.png" alt="UCLouvain logo" height="60"/><img src="https://github.com/CP3-Neutrino/momenta/blob/main/doc/logo_AstroCP3.png" alt="Astro-CP3 logo" height="80"/>

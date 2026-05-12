@@ -1,18 +1,18 @@
 """
-    Copyright (C) 2024  Mathieu Lamoureux
+Copyright (C) 2024  Mathieu Lamoureux
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import abc
@@ -31,7 +31,7 @@ import momenta.utils.conversions
 
 
 class Transient:
-    def __init__(self, name: str = '', utc: astropy.time.Time | None = None, logger: str = "momenta"):
+    def __init__(self, name: str = "", utc: astropy.time.Time | None = None, logger: str = "momenta"):
         self.name = name
         self.utc = utc
         self.logger = logger
@@ -39,6 +39,12 @@ class Transient:
     def __repr__(self):
         return self.name
     
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        return self.name
+
     def __str__(self):
         return self.__repr__()
 
@@ -53,8 +59,12 @@ class Transient:
 
 class PointSource(Transient):
     def __init__(
-        self, ra_deg: float, dec_deg: float,
-        err_deg: float | None = None, name: str = '', utc: astropy.time.Time | None = None,
+        self,
+        ra_deg: float,
+        dec_deg: float,
+        err_deg: float | None = None,
+        name: str = "",
+        utc: astropy.time.Time | None = None,
         logger: str = "momenta",
     ):
         """Transient point source.
@@ -71,7 +81,7 @@ class PointSource(Transient):
         self.ra_deg = ra_deg
         self.dec_deg = dec_deg
         self.coords = astropy.coordinates.SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame="icrs")
-        self.err = err_deg * u.deg
+        self.err = (err_deg if err_deg is not None else 0) * u.deg
         self.distance = None
         self.redshift = None
 

@@ -1,18 +1,18 @@
 """
-    Copyright (C) 2024  Mathieu Lamoureux
+Copyright (C) 2024  Mathieu Lamoureux
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import abc
@@ -20,11 +20,11 @@ import astropy.coordinates
 import astropy.time
 import healpy as hp
 import numpy as np
-from copy import deepcopy
+from copy import deepcopy, copy
 
 from astropy.units import deg
 from astropy.time import Time
-from scipy.integrate import quad
+from scipy.integrate import simpson
 from scipy.interpolate import interp1d, RegularGridInterpolator
 from scipy.stats import uniform, norm, rv_continuous
 from typing import Callable, Iterable
@@ -120,10 +120,20 @@ class Livetime(LivetimeBase):
         return self._acceptances[cache_key]
 
 
+def angular_distance(ra1: np.ndarray, dec1: np.ndarray, ra2: np.ndarray, dec2: np.ndarray, degrees1=False, degrees2=False) -> np.ndarray:
+    """Compute the angular distance using directions in equatorial coordinates.
 
-# at some point will need background time PDF interpret it as gaps or 
+    Args:
+        ra1 (np.ndarray): right ascension of the first object
+        dec1 (np.ndarray): declination of the first object
+        ra2 (np.ndarray): right ascension of the second object
+        dec2 (np.ndarray): declination of the second object
+        degrees1 (bool, optional): indidates if the first object coordinates are in degrees. Defaults to False (radians).
+        degrees2 (bool, optional): indidates if the second object coordinates are in degrees. Defaults to False (radians).
 
-def angular_distance(ra1: np.ndarray, dec1: np.ndarray, ra2: np.ndarray, dec2: np.ndarray, degrees1=False, degrees2=False):
+    Returns:
+        np.ndarray: angular distance in radians
+    """
     if degrees1:
         r1, d1 = np.deg2rad(ra1), np.deg2rad(dec1)
     else:
@@ -141,12 +151,12 @@ class EffectiveAreaBase:
     This default class handles only energy-dependent effective area."""
 
     def __init__(self):
-        self._acceptances = {} # pre-computed acceptances
-        self._scaling_factor = 1 # global scaling factor
+        self._acceptances = {}  # pre-computed acceptances
+        self._scaling_factor = 1  # global scaling factor
 
     def evaluate(self, energy: float | np.ndarray, ipix: int, nside: int):
         """Evaluate the effective area for a given energy, pixel index, and skymap resolution."""
-        return 0*self._scaling_factor
+        return 0 * self._scaling_factor
 
     def _compute_acceptance(self, fluxcomponent: Component, ipix: int, nside: int):#, t0: Time | None=None): # ipix should be joined by t0: can have priors on it... but that would be redundant with loc parameter
         """Compute the acceptance integrating the effective area x flux in log scale between emin and emax.
@@ -155,7 +165,9 @@ class EffectiveAreaBase:
         def func(x: float):
             return fluxcomponent.evaluate(np.exp(x)) * self.evaluate(np.exp(x), ipix, nside) * np.exp(x)
 
-        return quad(func, np.log(fluxcomponent.emin), np.log(fluxcomponent.emax), limit=500)[0]
+        x = np.linspace(np.log(fluxcomponent.emin), np.log(fluxcomponent.emax), 1001)
+        y = func(x)
+        return simpson(y, x=x)
 
     
     def compute_acceptance_map(self, fluxcomponent: Component, nside: int):
@@ -176,7 +188,7 @@ class EffectiveAreaBase:
         if fluxcomponent.store == "exact":
             if (str(fluxcomponent), nside) not in self._acceptances:
                 self._acceptances[(str(fluxcomponent), nside)] = self.compute_acceptance_map(fluxcomponent, nside)
-            return self._acceptances[(str(fluxcomponent), nside)]
+            return copy(self._acceptances[(str(fluxcomponent), nside)])
         if fluxcomponent.store == "interpolate":
             if (str(fluxcomponent), nside) not in self._acceptances:
                 accs = {str(c): a for c, a in zip(fluxcomponent.grid.flatten(), self.compute_acceptance_maps(fluxcomponent.grid.flatten(), nside))}
@@ -187,7 +199,7 @@ class EffectiveAreaBase:
                 accs = np.vectorize(f, signature="()->(n)")(fluxcomponent.grid)
                 grid = [*fluxcomponent.shapevar_grid, np.arange(hp.nside2npix(nside))]
                 self._acceptances[(str(fluxcomponent), nside)] = RegularGridInterpolator(grid, accs)
-            return self._acceptances[(str(fluxcomponent), nside)]
+            return copy(self._acceptances[(str(fluxcomponent), nside)])
         return self.compute_acceptance_map(fluxcomponent, nside)
 
     def get_acceptance(self, fluxcomponent: Component, ipix: int, nside: int): # could be joined by , t0: Time as something with priors
@@ -205,53 +217,75 @@ class EffectiveAreaBase:
         # multiply scaling factor for future evaluation
         new._scaling_factor *= factor
         # multiply already stored acceptances
-        new._acceptances = {key:val*factor for key,val in self._acceptances.items()}
+        new._acceptances = {key: val * factor for key, val in self._acceptances.items()}
         # FIXME this will not work with the ingredients_internal one
         return new
-    
+
     def __rmul__(self, factor: float):
         return self.__mul__(factor)
 
 # TODO how you implement in the LLH determines whether you can use this integrated acceptance, or need Acceptance(t)
 
 class EffectiveAreaAllSky(EffectiveAreaBase):
+    """Handle effective areas that only depend on the neutrino energy (with no direction dependence)."""
 
-    def __init__(self, csvfile: str | None = None):
-        """Effective area depending only on energy.
+    def __init__(self, csvfile: str | None = None, func: Callable | None = None):
+        """Effective area depending only on energy, either from a CSV file or from a Python 1D function.
+        If using the CSV option, the file should contain two columns with energy/GeV and Aeff/cm^2 (no header).
 
         Args:
-            csvfile (str, optional): CSV file to read effective area.
-            Format per line: E/GeV,Aeff/m^2
+            csvfile (str, optional): Path to the CSV file.
+            func (callable, option): Python function.
         """        
         super().__init__()
         self.func = None
         if csvfile:
+            if func:
+                raise RuntimeWarning("Both CSV and function options have been passed, the CSV will be used.")
             self.read_csv(csvfile)
+        if func:
+            self.func = func        
 
     def read_csv(self, csvfile: str):
         x, y = np.loadtxt(csvfile, delimiter=",").T
         self.func = interp1d(x, y, bounds_error=False, fill_value=0)
-        self._acceptances = {} # replace if already precomputed
+        self._acceptances = {}  # replace if already precomputed
 
     def evaluate(self, energy: float | np.ndarray, ipix: int, nside: int):
         val = self.func(energy)
-        return val*self._scaling_factor
+        return val * self._scaling_factor
 
     def compute_acceptance_map(self, fluxcomponent: Component, nside: int):
         acc = self._compute_acceptance(fluxcomponent, 0, nside) * np.ones(hp.nside2npix(nside))
         return acc
 
 class EffectiveAreaDeclinationDep(EffectiveAreaBase):
+    """Handle effective areas that depend on energy and declination. The function should be defined by the user in the attribute `func`.
+    The mapping dictionary, automatically created on the first call, allows to map each HealPix pixels to a declination value.
+    """
 
     def __init__(self):
         super().__init__()
         self.mapping = {}
+        self.func = None
 
     def evaluate(self, energy: float | np.ndarray, ipix: int, nside: int):
+        """Returns the effective area for a given pixel in equatorial coordinates
+
+        Args:
+            energy (float | np.ndarray): energy in GeV
+            ipix (int): pixel index
+            nside (int): skymap resolution
+
+        Returns:
+            float: effective area in cm^2
+        """
+        if self.func == None:
+            raise RuntimeError("The function calculating the effective area is missing")
         if nside not in self.mapping:
             self.mapping[nside] = self.map_ipix_to_declination(nside)
         val = self.func(energy, self.mapping[nside][ipix])
-        return val*self._scaling_factor
+        return val * self._scaling_factor
 
     def compute_acceptance_map(self, fluxcomponent: Component, nside: int):
         if nside not in self.mapping:
@@ -267,6 +301,9 @@ class EffectiveAreaDeclinationDep(EffectiveAreaBase):
         return dec
 
 class EffectiveAreaAltitudeDep(EffectiveAreaBase):
+    """Handle effective areas that depend on energy and altitude. The function should be defined by the user in the attribute `func`.
+    The mapping dictionary, automatically created on the first call, allows to map each HealPix pixels to an altitude value.
+    """
 
     def __init__(self):
         super().__init__()
@@ -280,15 +317,26 @@ class EffectiveAreaAltitudeDep(EffectiveAreaBase):
         self.func = RegularGridInterpolator((bins_logenergy, bins_altitude), aeff, bounds_error=False, fill_value=0)
 
     def set_location(self, time: astropy.time.Time, lat_deg: float, lon_deg: float):
-        self.obstime = time
-        self.location = astropy.coordinates.EarthLocation(lat=lat_deg * deg, lon=lon_deg * deg)
+        """Set the detector location, as needed to convert from local to equatorial coordinates."""
+        location = astropy.coordinates.EarthLocation(lat=lat_deg * deg, lon=lon_deg * deg)
+        self.local_frame = astropy.coordinates.AltAz(obstime=time, location=location)
         self.mapping = {}
 
-    def evaluate(self, energy: float | np.ndarray, ipix: int, nside: int):
+    def evaluate(self, energy: float | np.ndarray, ipix: int, nside: int) -> float:
+        """Returns the effective area for a given pixel in equatorial coordinates
+
+        Args:
+            energy (float | np.ndarray): energy in GeV
+            ipix (int): pixel index
+            nside (int): skymap resolution
+
+        Returns:
+            float: effective area in cm^2
+        """
         if nside not in self.mapping:
             self.mapping[nside] = self.map_ipix_to_altitude(nside)
         val = self.func((np.log10(energy), self.mapping[nside][ipix]))
-        return val*self._scaling_factor
+        return val * self._scaling_factor
 
     def compute_acceptance_map(self, fluxcomponent: Component, nside: int):
         if nside not in self.mapping:
@@ -302,7 +350,7 @@ class EffectiveAreaAltitudeDep(EffectiveAreaBase):
         ipix = np.arange(hp.nside2npix(nside))
         ra, dec = hp.pix2ang(nside, ipix, lonlat=True)
         coords_eq = astropy.coordinates.SkyCoord(ra=ra * deg, dec=dec * deg, frame="icrs")
-        coords_loc = coords_eq.transform_to(astropy.coordinates.AltAz(obstime=self.obstime, location=self.location))
+        coords_loc = coords_eq.transform_to(self.local_frame)
         return coords_loc.alt.deg
 
 

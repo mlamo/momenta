@@ -1,18 +1,18 @@
 """
-    Copyright (C) 2024  Mathieu Lamoureux
+Copyright (C) 2024  Mathieu Lamoureux
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import astropy.time
@@ -83,7 +83,7 @@ class GW(Transient):
     def prepare_prior_samples(self, nside: int) -> pd.DataFrame:
         if self.samples:
             if self.samples_priorities is None:
-                self.log.error("[GW] Preparing toys using posterior samples require to call set_parameters() first.")
+                raise RuntimeError("[GW] Preparing toys using posterior samples require to call set_parameters() first.")
             self.samples.priorities = self.samples_priorities
             toys = pd.DataFrame(self.samples.prepare_toys(nside))
             toys["distance_scaling"] = momenta.utils.conversions.distance_scaling(
@@ -233,7 +233,7 @@ class _GWSamples:
         variables_to_get = ["ra", "dec", "luminosity_distance", "redshift", "radiated_energy", "theta_jn"]
         toys = self.get_variables(*variables_to_get)
         toys["energy_scaling"] = toys.pop("radiated_energy") * momenta.utils.conversions.solarmass_to_erg
-        toys["viewing_angle"] = toys.pop("theta_jn")
+        toys["vieving_angle"] = toys.pop("theta_jn")
         toys["ipix"] = hp.ang2pix(nside, toys["ra"], toys["dec"], lonlat=True)
         return toys
 

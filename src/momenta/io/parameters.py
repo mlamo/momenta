@@ -1,18 +1,18 @@
 """
-    Copyright (C) 2024  Mathieu Lamoureux
+Copyright (C) 2024  Mathieu Lamoureux
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
@@ -40,8 +40,8 @@ class Parameters:
             self.prior_normalisation_var = params["analysis"]["prior_normalisation"]["variable"]
             self.prior_normalisation_type = params["analysis"]["prior_normalisation"]["type"]
             self.prior_normalisation_range = [
-                params["analysis"]["prior_normalisation"]["range"]["min"], 
-                params["analysis"]["prior_normalisation"]["range"]["max"]
+                params["analysis"]["prior_normalisation"]["range"]["min"],
+                params["analysis"]["prior_normalisation"]["range"]["max"],
             ]
             # GW parameters
             if "gw" in params and "sample_priorities" in params["gw"]:
@@ -53,7 +53,7 @@ class Parameters:
 
     def __repr__(self):
         params = []
-        for attr in ["file", "flux", "jet"]:
+        for attr in ["file", "flux"]:
             val = getattr(self, attr)
             if val is not None:
                 params.append(f"{attr}={val}")
@@ -71,16 +71,6 @@ class Parameters:
             raise RuntimeError("[Parameters] did not validate, flux is not set")
         if self.prior_normalisation_var not in ["flux", "etot", "fnu"]:
             raise RuntimeError(f"[Parameters] did not validate, the variable used for prior normalisation ({self.prior_normalisation_var} is unknown")
-
-    @property
-    def str_filename(self):
-        """Get the representation of the parameters in string format for suffixing filenames."""
-        str_model = []
-        if self.flux is not None:
-            str_model.append(str(self.flux))
-        if self.jet is not None:
-            str_model.append(self.jet.str_filename)
-        return "_".join(str_model)
 
     def get_searchregion_gwfraction(self) -> float:
         spl = self.search_region.split("_")
