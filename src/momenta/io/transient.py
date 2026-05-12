@@ -35,12 +35,6 @@ class Transient:
         self.name = name
         self.utc = utc
         self.logger = logger
-        
-    def __repr__(self):
-        return self.name
-    
-    def __str__(self):
-        return self.__repr__()
 
     def __repr__(self):
         return self.name
