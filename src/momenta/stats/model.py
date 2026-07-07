@@ -18,6 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import awkward as ak
 import numpy as np
 from scipy.stats import norm, poisson
+from scipy.special import gammaln
 
 from momenta.io import NuDetectorBase, Parameters, Stack, Transient
 
@@ -170,12 +171,12 @@ class ModelOneSource:
         nsigs = facc[:, np.newaxis, :] * (fluxnorms[:, :, np.newaxis] * accs / 6)  # dims = (npoints, ncompflux, nsamples)
         nexps = nbkg + np.sum(nsigs, axis=1)  # dims = (npoints, nsamples)
         if self.parameters.likelihood_method == "poisson":
-            loglkl = np.sum(-nexps + self.nobs * np.log(nexps), axis=1)  # dims = (npoints, )
+            loglkl = np.sum(-nexps + self.nobs * np.log(nexps) - gammaln(self.nobs+1), axis=1)  # dims = (npoints, )
         if self.parameters.likelihood_method == "pointsource":
             loglkl = np.sum(-nexps, axis=1)  # dims = (npoints, )
             for isample, s in enumerate(self.detector.samples):
                 if s.events is None:
-                    loglkl += self.nobs[isample] * np.log(nexps[:, isample])  # dims = (npoints, )
+                    loglkl += self.nobs[isample] * np.log(nexps[:, isample]) - gammaln(self.nobs[isample]+1)  # dims = (npoints, )
                     continue
                 psigs = np.zeros((npoints, self.flux.ncomponents, s.nobserved))  # dims = (npoints, ncompflux, nevents)
                 ishape = 0
@@ -189,8 +190,8 @@ class ModelOneSource:
                 pbkgs = np.zeros(s.nobserved)
                 for ievt, evt in enumerate(s.events):
                     pbkgs[ievt] = s.compute_background_probability(evt)
-                probs = nbkg[:, isample, np.newaxis] * pbkgs + np.sum(nsigs[:, :, isample, np.newaxis] * psigs, axis=1)
-                loglkl += np.sum(np.log(probs), axis=1)
+                probs = ( nbkg[:, isample, np.newaxis] * pbkgs + np.sum(nsigs[:, :, isample, np.newaxis] * psigs, axis=1) ) / (nbkg[:, isample, np.newaxis] + np.sum(nsigs[:, :, isample, np.newaxis], axis=1))
+                loglkl += np.sum(np.log(probs), axis=1) + self.nobs[isample] * np.log(nexps[:, isample]) - gammaln(self.nobs[isample]+1)
         return loglkl
 
     def calculate_deterministics(self, samples):
@@ -343,6 +344,7 @@ class ModelStacked:
 
     def validate(self):
         if self.priornorm_var == "flux":
+            # raise RuntimeError("[Model] Invalid variable used as normalisation, cannot be `flux` as it is source-dependent")
             print("Warning: assuming `flux` as normalisation variable will assume each source equal in flux")
 
     @property
@@ -491,14 +493,14 @@ class ModelStacked:
         nsigs = faccs[:, np.newaxis, :] * (fluxnorms * accs / 6)  # dims = (npoints, ncompflux, nsamples)
         nexps = nbkgs + np.sum(nsigs, axis=1)  # dims = (npoints, nsamples)
         if self.parameters.likelihood_method == "poisson":
-            loglkl = np.sum(-nexps + ak.flatten(self.nobs).to_list() * np.log(nexps), axis=1)  # dims = (npoints, )
+            loglkl = np.sum(-nexps + ak.flatten(self.nobs).to_list() * np.log(nexps) - gammaln(ak.flatten(self.nobs+1).to_list()), axis=1)  # dims = (npoints, )
         if self.parameters.likelihood_method == "pointsource":
             loglkl = np.sum(-nexps, axis=1)  # dims = (npoints, )
             i = 0
             for isource in range(self.nsources):
                 for isample, s in enumerate(self.detectors[isource].samples):
                     if s.events is None:
-                        loglkl += self.nobs[isource][isample] * np.log(nexps[:, i + isample])  # dims = (npoints, )
+                        loglkl += self.nobs[isource][isample] * np.log(nexps[:, i + isample]) - gammaln(self.nobs[isource][isample]+1)   # dims = (npoints, )
                         continue
                     psigs = np.zeros((npoints, self.flux.ncomponents, s.nobserved))  # dims = (npoints, ncompflux, nevents)
                     ishape = 0
@@ -512,8 +514,8 @@ class ModelStacked:
                     pbkgs = np.zeros(s.nobserved)
                     for ievt, evt in enumerate(s.events):
                         pbkgs[ievt] = s.compute_background_probability(evt)
-                    probs = nbkgs[:, i + isample, np.newaxis] * pbkgs + np.sum(nsigs[:, :, i + isample, np.newaxis] * psigs, axis=1)
-                    loglkl += np.sum(np.log(probs), axis=1)
+                    probs = (nbkgs[:, i + isample, np.newaxis] * pbkgs + np.sum(nsigs[:, :, i + isample, np.newaxis] * psigs, axis=1)) / (nbkgs[:, i + isample, np.newaxis] + np.sum(nsigs[:, :, i + isample, np.newaxis], axis=1))
+                    loglkl += np.sum(np.log(probs), axis=1)  + self.nobs[isource][isample] * np.log(nexps[:, isample]) - gammaln(self.nobs[isource][isample]+1)
                 i += self.nsamples[isource]
         return loglkl
 
